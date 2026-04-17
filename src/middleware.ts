@@ -10,17 +10,18 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith('/auth') ||
     request.nextUrl.pathname.startsWith('/legal');
 
-  // If env vars are missing, redirect to login
-  if (!supabaseUrl || !supabaseKey) {
-    if (!isPublicRoute) {
-      const url = request.nextUrl.clone();
-      url.pathname = '/login';
-      return NextResponse.redirect(url);
-    }
+  // Public routes: let through immediately, no Supabase call
+  if (isPublicRoute) {
     return NextResponse.next();
   }
 
-  // Create a response that we'll modify with cookies
+  // If env vars are missing, redirect to login
+  if (!supabaseUrl || !supabaseKey) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    return NextResponse.redirect(url);
+  }
+
   let response = NextResponse.next({
     request: { headers: request.headers },
   });
@@ -31,15 +32,12 @@ export async function middleware(request: NextRequest) {
         return request.cookies.getAll();
       },
       setAll(cookiesToSet) {
-        // First update the request cookies (for downstream)
         cookiesToSet.forEach(({ name, value }) => {
           request.cookies.set(name, value);
         });
-        // Recreate response with updated request
         response = NextResponse.next({
           request: { headers: request.headers },
         });
-        // Set cookies on the response (sent to browser)
         cookiesToSet.forEach(({ name, value, options }) => {
           response.cookies.set(name, value, options);
         });
@@ -47,25 +45,12 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  // This refreshes the session if needed and sets cookies via setAll
+  // Only call getUser for protected routes
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Not authenticated → redirect to login (unless already on public route)
-  if (!user && !isPublicRoute) {
+  if (!user) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
-    const redirectResponse = NextResponse.redirect(url);
-    // Carry over any cookies that were set during getUser (token refresh)
-    response.cookies.getAll().forEach((cookie) => {
-      redirectResponse.cookies.set(cookie.name, cookie.value);
-    });
-    return redirectResponse;
-  }
-
-  // Authenticated user on login page → redirect to home
-  if (user && request.nextUrl.pathname.startsWith('/login')) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/';
     const redirectResponse = NextResponse.redirect(url);
     response.cookies.getAll().forEach((cookie) => {
       redirectResponse.cookies.set(cookie.name, cookie.value);
