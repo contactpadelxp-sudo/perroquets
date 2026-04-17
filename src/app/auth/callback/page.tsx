@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { createSupabaseBrowser } from '@/lib/supabase-browser';
+import { supabase } from '@/lib/supabase';
 import { Loader2 } from 'lucide-react';
 
 export default function AuthCallbackPage() {
@@ -14,22 +14,28 @@ export default function AuthCallbackPage() {
     processed.current = true;
 
     const handleCallback = async () => {
-      const supabase = createSupabaseBrowser();
+      // The supabase-js client will detect the hash fragment or code
+      // and exchange it for a session automatically
+      const { data, error } = await supabase.auth.getSession();
 
-      // Check URL for code (PKCE flow)
-      const params = new URLSearchParams(window.location.search);
-      const code = params.get('code');
-
-      if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-        if (error) {
-          console.error('Exchange error:', error.message);
+      if (error || !data.session) {
+        // Try exchanging code manually if present
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('code');
+        if (code) {
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          if (exchangeError) {
+            console.error('Exchange error:', exchangeError.message);
+            router.replace('/login?error=auth');
+            return;
+          }
+        } else {
           router.replace('/login?error=auth');
           return;
         }
       }
 
-      // Check if we have a session now
+      // Verify we have a user now
       const { data: { user } } = await supabase.auth.getUser();
 
       if (user) {
@@ -51,7 +57,8 @@ export default function AuthCallbackPage() {
           // Non-critical
         }
 
-        router.replace('/');
+        // Force full page reload to update middleware auth state
+        window.location.href = '/';
       } else {
         router.replace('/login?error=auth');
       }

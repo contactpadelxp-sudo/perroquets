@@ -3,7 +3,7 @@
 import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { createSupabaseBrowser } from '@/lib/supabase-browser';
+import { supabase } from '@/lib/supabase';
 import { Loader2, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -48,8 +48,6 @@ function LoginContent() {
   );
   const [success, setSuccess] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
-
-  const supabase = createSupabaseBrowser();
 
   const handleGoogleLogin = async () => {
     if (mode === 'signup' && !consent) {

@@ -7,7 +7,8 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { createSupabaseBrowser } from './supabase-browser';
+import { usePathname, useRouter } from 'next/navigation';
+import { supabase } from './supabase';
 import type { User } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -22,21 +23,21 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
 });
 
+const PUBLIC_ROUTES = ['/login', '/auth', '/legal'];
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const supabase = createSupabaseBrowser();
+  const pathname = usePathname();
+  const router = useRouter();
+
+  const isPublicRoute = PUBLIC_ROUTES.some((r) => pathname.startsWith(r));
 
   useEffect(() => {
-    const getUser = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      setUser(user);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
       setLoading(false);
-    };
-
-    getUser();
+    });
 
     const {
       data: { subscription },
@@ -46,7 +47,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
-  }, [supabase]);
+  }, []);
+
+  // Redirect to login if not authenticated and not on public route
+  useEffect(() => {
+    if (loading) return;
+    if (!user && !isPublicRoute) {
+      router.replace('/login');
+    }
+  }, [user, loading, isPublicRoute, router]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
