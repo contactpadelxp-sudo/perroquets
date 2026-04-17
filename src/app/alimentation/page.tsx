@@ -1,0 +1,259 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { format, addDays, subDays } from 'date-fns';
+import { toast } from 'sonner';
+import { DailySummary } from '@/components/alimentation/DailySummary';
+import { MealCard } from '@/components/alimentation/MealCard';
+import { AddFoodModal } from '@/components/alimentation/AddFoodModal';
+import { ComparisonTable } from '@/components/alimentation/ComparisonTable';
+import { NutritionPanel } from '@/components/alimentation/NutritionPanel';
+import { AlertsPanel } from '@/components/alimentation/AlertsPanel';
+import { MealGenerator } from '@/components/alimentation/MealGenerator';
+import { HistoryCalendar } from '@/components/alimentation/HistoryCalendar';
+import { NutritionCharts } from '@/components/alimentation/NutritionCharts';
+import { PhotoGallery } from '@/components/alimentation/PhotoGallery';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth-context';
+import { calculateDailyNutrition, ensureDailyMealGenerated, getSeasonalFoodIdsForMonth } from '@/lib/actions';
+import type {
+  DailyMeal,
+  DailyNutritionSummary,
+  Food,
+  FoodCategory,
+  MealTime,
+} from '@/types/database';
+import { cn } from '@/lib/utils';
+
+export default function AlimentationPage() {
+  const { user } = useAuth();
+  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [meals, setMeals] = useState<DailyMeal[]>([]);
+  const [summary, setSummary] = useState<DailyNutritionSummary | null>(null);
+  const [foods, setFoods] = useState<Food[]>([]);
+  const [categories, setCategories] = useState<FoodCategory[]>([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [activeMealTime, setActiveMealTime] = useState<MealTime>('matin');
+  const [historyTab, setHistoryTab] = useState<'calendar' | 'gallery'>('calendar');
+  const [seasonalFoodIds, setSeasonalFoodIds] = useState<Set<string>>(new Set());
+  const [autoGenerating, setAutoGenerating] = useState(false);
+
+  const loadData = useCallback(async () => {
+    if (!user) return;
+    const [mealsRes, summaryRes] = await Promise.all([
+      supabase
+        .from('daily_meals')
+        .select('*, meal_items(*, food:foods(*, category:food_categories(*)))')
+        .eq('meal_date', date)
+        .eq('user_id', user.id)
+        .order('meal_time'),
+      supabase
+        .from('daily_nutrition_summary')
+        .select('*')
+        .eq('summary_date', date)
+        .eq('user_id', user.id)
+        .single(),
+    ]);
+    setMeals(mealsRes.data ?? []);
+    setSummary(summaryRes.data);
+  }, [date, user]);
+
+  const loadFoods = useCallback(async () => {
+    const [foodsRes, catsRes] = await Promise.all([
+      supabase.from('foods').select('*, category:food_categories(*)').order('name'),
+      supabase.from('food_categories').select('*').order('name'),
+    ]);
+    setFoods(foodsRes.data ?? []);
+    setCategories(catsRes.data ?? []);
+  }, []);
+
+  // Load seasonality data
+  useEffect(() => {
+    const currentMonth = new Date().getMonth() + 1;
+    getSeasonalFoodIdsForMonth(currentMonth)
+      .then(ids => setSeasonalFoodIds(new Set(ids)))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { loadFoods(); }, [loadFoods]);
+
+  // Auto-generate meals for today on first load
+  useEffect(() => {
+    if (!user || date !== format(new Date(), 'yyyy-MM-dd')) return;
+    const autoGen = async () => {
+      setAutoGenerating(true);
+      try {
+        await ensureDailyMealGenerated(date);
+        await loadData();
+      } catch (e) {
+        console.error('Auto-generation error:', e);
+      } finally {
+        setAutoGenerating(false);
+      }
+    };
+    autoGen();
+  }, [user, date]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const getMeal = (mealTime: MealTime): DailyMeal | null => {
+    return meals.find((m) => m.meal_time === mealTime) ?? null;
+  };
+
+  const handleAddFood = (mealTime: MealTime) => {
+    setActiveMealTime(mealTime);
+    setModalOpen(true);
+  };
+
+  const handleAddFoodConfirm = async (foodId: string, quantity: number) => {
+    const food = foods.find((f) => f.id === foodId);
+    if (food?.is_forbidden) {
+      toast.error(`⛔ ${food.name} est un aliment INTERDIT — ${food.danger_note}`);
+      return;
+    }
+
+    const existing = meals.find((m) => m.meal_time === activeMealTime && !m.is_recommended);
+    let mealId: string;
+
+    if (existing) {
+      mealId = existing.id;
+    } else {
+      const { data, error } = await supabase
+        .from('daily_meals')
+        .insert({ meal_date: date, meal_time: activeMealTime, user_id: user!.id })
+        .select()
+        .single();
+      if (error) { toast.error('Erreur création repas'); return; }
+      mealId = data.id;
+    }
+
+    const { error } = await supabase.from('meal_items').insert({
+      meal_id: mealId,
+      food_id: foodId,
+      quantity_tbsp: quantity,
+      weight_grams: quantity * 15,
+      seed_removed: food?.remove_seed ? false : null,
+      user_id: user!.id,
+    });
+
+    if (error) { toast.error('Erreur ajout aliment'); return; }
+
+    toast.success(`${food?.name} ajouté !`);
+    await loadData();
+    try { await calculateDailyNutrition(date); await loadData(); } catch (e) { console.error(e); }
+  };
+
+  const handleToggleEaten = async (itemId: string, eaten: boolean) => {
+    await supabase.from('meal_items').update({ actually_eaten: eaten }).eq('id', itemId);
+    await loadData();
+    try { await calculateDailyNutrition(date); await loadData(); } catch (e) { console.error(e); }
+  };
+
+  const handleToggleSeed = async (itemId: string, removed: boolean) => {
+    await supabase.from('meal_items').update({ seed_removed: removed }).eq('id', itemId);
+    toast.success(removed ? 'Noyau confirmé retiré ✓' : 'Retrait noyau non confirmé');
+    await loadData();
+    try { await calculateDailyNutrition(date); await loadData(); } catch (e) { console.error(e); }
+  };
+
+  const handleDeleteItem = async (itemId: string) => {
+    await supabase.from('meal_items').delete().eq('id', itemId);
+    toast.success('Aliment supprimé');
+    await loadData();
+    try { await calculateDailyNutrition(date); await loadData(); } catch (e) { console.error(e); }
+  };
+
+  const recommendedMeals = meals.filter((m) => m.is_recommended);
+  const hasRealMeals = meals.some((m) => !m.is_recommended);
+
+  return (
+    <div className="space-y-6 max-w-4xl mx-auto">
+      <h1 className="text-2xl font-bold">🍽️ Alimentation</h1>
+
+      {/* Section A: Daily Summary */}
+      <DailySummary
+        date={date}
+        summary={summary}
+        onPrevDay={() => setDate(format(subDays(new Date(date), 1), 'yyyy-MM-dd'))}
+        onNextDay={() => setDate(format(addDays(new Date(date), 1), 'yyyy-MM-dd'))}
+      />
+
+      {/* Auto-generation info + "Why this meal?" */}
+      <MealGenerator
+        date={date}
+        recommendedMeals={recommendedMeals}
+        hasRealMeals={hasRealMeals}
+        onRegenerated={loadData}
+      />
+
+      {/* Section B: Meal Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {(['matin', 'midi', 'soir'] as MealTime[]).map((time) => (
+          <MealCard
+            key={time}
+            mealTime={time}
+            meal={getMeal(time)}
+            seasonalFoodIds={seasonalFoodIds}
+            onAddFood={handleAddFood}
+            onToggleEaten={handleToggleEaten}
+            onToggleSeed={handleToggleSeed}
+            onDeleteItem={handleDeleteItem}
+            onPhotoChange={loadData}
+          />
+        ))}
+      </div>
+
+      {/* Section C: Comparison */}
+      <ComparisonTable recommendedMeals={recommendedMeals} />
+
+      {/* Section D: Nutrition Panel */}
+      <NutritionPanel summary={summary} />
+
+      {/* Section E: Alerts */}
+      <AlertsPanel alerts={summary?.alerts ?? []} />
+
+      {/* Section G: History with tabs */}
+      <div className="space-y-4">
+        <div className="flex gap-2">
+          <button
+            onClick={() => setHistoryTab('calendar')}
+            className={cn(
+              'px-4 py-2 rounded-xl text-sm font-medium transition-colors',
+              historyTab === 'calendar' ? 'bg-accent-violet text-white' : 'bg-white/5 text-muted hover:bg-white/10'
+            )}
+          >
+            📅 Calendrier
+          </button>
+          <button
+            onClick={() => setHistoryTab('gallery')}
+            className={cn(
+              'px-4 py-2 rounded-xl text-sm font-medium transition-colors',
+              historyTab === 'gallery' ? 'bg-accent-violet text-white' : 'bg-white/5 text-muted hover:bg-white/10'
+            )}
+          >
+            📷 Galerie photos
+          </button>
+        </div>
+
+        {historyTab === 'calendar' ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <HistoryCalendar selectedDate={date} onSelectDate={setDate} />
+            <NutritionCharts />
+          </div>
+        ) : (
+          <PhotoGallery />
+        )}
+      </div>
+
+      {/* Add Food Modal */}
+      <AddFoodModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        foods={foods}
+        categories={categories}
+        mealTime={activeMealTime}
+        seasonalFoodIds={seasonalFoodIds}
+        onAdd={handleAddFoodConfirm}
+      />
+    </div>
+  );
+}
