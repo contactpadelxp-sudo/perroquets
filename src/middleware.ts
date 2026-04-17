@@ -5,9 +5,14 @@ export async function middleware(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // If env vars are missing, redirect to login (safe fallback)
+  const isPublicRoute =
+    request.nextUrl.pathname.startsWith('/login') ||
+    request.nextUrl.pathname.startsWith('/auth') ||
+    request.nextUrl.pathname.startsWith('/legal');
+
+  // If env vars are missing, redirect to login
   if (!supabaseUrl || !supabaseKey) {
-    if (!request.nextUrl.pathname.startsWith('/login') && !request.nextUrl.pathname.startsWith('/legal')) {
+    if (!isPublicRoute) {
       const url = request.nextUrl.clone();
       url.pathname = '/login';
       return NextResponse.redirect(url);
@@ -15,62 +20,60 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  let supabaseResponse = NextResponse.next({
-    request,
+  // Create a response that we'll modify with cookies
+  let response = NextResponse.next({
+    request: { headers: request.headers },
   });
 
-  const supabase = createServerClient(
-    supabaseUrl,
-    supabaseKey,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
-          supabaseResponse = NextResponse.next({
-            request,
-          });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          );
-        },
+  const supabase = createServerClient(supabaseUrl, supabaseKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
       },
-    }
-  );
+      setAll(cookiesToSet) {
+        // First update the request cookies (for downstream)
+        cookiesToSet.forEach(({ name, value }) => {
+          request.cookies.set(name, value);
+        });
+        // Recreate response with updated request
+        response = NextResponse.next({
+          request: { headers: request.headers },
+        });
+        // Set cookies on the response (sent to browser)
+        cookiesToSet.forEach(({ name, value, options }) => {
+          response.cookies.set(name, value, options);
+        });
+      },
+    },
+  });
 
-  // Use getUser() to validate the session — this refreshes the token if needed
-  // and properly sets cookies via setAll callback above
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // This refreshes the session if needed and sets cookies via setAll
+  const { data: { user } } = await supabase.auth.getUser();
 
-  const isPublicRoute =
-    request.nextUrl.pathname.startsWith('/login') ||
-    request.nextUrl.pathname.startsWith('/auth') ||
-    request.nextUrl.pathname.startsWith('/legal');
-
-  // If not authenticated and not on a public route, redirect to login
-  if (
-    !user &&
-    !isPublicRoute
-  ) {
+  // Not authenticated → redirect to login (unless already on public route)
+  if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
-    return NextResponse.redirect(url);
+    const redirectResponse = NextResponse.redirect(url);
+    // Carry over any cookies that were set during getUser (token refresh)
+    response.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie.name, cookie.value);
+    });
+    return redirectResponse;
   }
 
-  // If authenticated and on login page, redirect to home
+  // Authenticated user on login page → redirect to home
   if (user && request.nextUrl.pathname.startsWith('/login')) {
     const url = request.nextUrl.clone();
     url.pathname = '/';
-    return NextResponse.redirect(url);
+    const redirectResponse = NextResponse.redirect(url);
+    response.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie.name, cookie.value);
+    });
+    return redirectResponse;
   }
 
-  return supabaseResponse;
+  return response;
 }
 
 export const config = {
