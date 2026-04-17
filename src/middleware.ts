@@ -42,16 +42,21 @@ export async function middleware(request: NextRequest) {
     }
   );
 
+  // Use getUser() to validate the session — this refreshes the token if needed
+  // and properly sets cookies via setAll callback above
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // If not authenticated and not on login or auth callback, redirect to login
+  const isPublicRoute =
+    request.nextUrl.pathname.startsWith('/login') ||
+    request.nextUrl.pathname.startsWith('/auth') ||
+    request.nextUrl.pathname.startsWith('/legal');
+
+  // If not authenticated and not on a public route, redirect to login
   if (
     !user &&
-    !request.nextUrl.pathname.startsWith('/login') &&
-    !request.nextUrl.pathname.startsWith('/auth') &&
-    !request.nextUrl.pathname.startsWith('/legal')
+    !isPublicRoute
   ) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
