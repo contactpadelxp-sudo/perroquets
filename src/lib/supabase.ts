@@ -1,20 +1,9 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 
-let _supabase: SupabaseClient | null = null;
+const FALLBACK_URL = 'https://phlcojlzujlkktwusmku.supabase.co';
+const FALLBACK_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBobGNvamx6dWpsa2t0d3VzbWt1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY0MjY2MzAsImV4cCI6MjA5MjAwMjYzMH0.rnPGDCClwzirFOZfHB6nOXb9Cq7b34L_vBWD6_mf5LQ';
 
-export function getSupabase(): SupabaseClient {
-  if (!_supabase) {
-    _supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-  }
-  return _supabase;
-}
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || FALLBACK_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || FALLBACK_KEY;
 
-// For convenience — lazy singleton, only created when first accessed
-export const supabase = new Proxy({} as SupabaseClient, {
-  get(_, prop) {
-    return (getSupabase() as any)[prop];
-  },
-});
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
