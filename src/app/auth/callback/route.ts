@@ -1,19 +1,18 @@
-import { NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
-export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
-  const next = searchParams.get('next') ?? '/';
-
-  const redirectUrl = `${origin}${next}`;
-  const errorUrl = `${origin}/login?error=auth`;
+  const origin = new URL(request.url).origin;
 
   if (!code) {
-    return NextResponse.redirect(errorUrl);
+    return NextResponse.redirect(`${origin}/login?error=auth`);
   }
 
-  const response = NextResponse.redirect(redirectUrl);
+  // We need to collect cookies during exchangeCodeForSession,
+  // then apply them to the final redirect response
+  const cookiesToApply: { name: string; value: string; options: any }[] = [];
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,16 +20,11 @@ export async function GET(request: Request) {
     {
       cookies: {
         getAll() {
-          // Read cookies from the incoming request
-          return request.headers.get('cookie')?.split('; ').map((c) => {
-            const [name, ...rest] = c.split('=');
-            return { name, value: rest.join('=') };
-          }) ?? [];
+          return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          // Write cookies to the outgoing response
-          cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set(name, value, options);
+          cookiesToSet.forEach((cookie) => {
+            cookiesToApply.push(cookie);
           });
         },
       },
@@ -40,11 +34,10 @@ export async function GET(request: Request) {
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
-    console.error('Auth callback error:', error.message);
-    return NextResponse.redirect(errorUrl);
+    return NextResponse.redirect(`${origin}/login?error=auth`);
   }
 
-  // Ensure user_settings row exists
+  // Create user_settings if needed (non-blocking)
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
@@ -53,7 +46,6 @@ export async function GET(request: Request) {
         .select('id')
         .eq('user_id', user.id)
         .single();
-
       if (!existing) {
         await supabase.from('user_settings').insert({
           user_id: user.id,
@@ -62,8 +54,14 @@ export async function GET(request: Request) {
       }
     }
   } catch {
-    // Non-critical — don't block login if settings insert fails
+    // Non-critical
   }
+
+  // Now create the redirect WITH all the auth cookies
+  const response = NextResponse.redirect(`${origin}/`);
+  cookiesToApply.forEach(({ name, value, options }) => {
+    response.cookies.set(name, value, options);
+  });
 
   return response;
 }
