@@ -71,7 +71,7 @@ export function Navbar() {
       {/* Desktop: left sidebar */}
       <nav className="fixed left-0 top-0 bottom-0 z-50 hidden lg:flex w-20 flex-col items-center gap-2 bg-card/90 backdrop-blur-xl border-r border-border py-6">
         <Link href="/" className="mb-4">
-          <img src="/icons/icon-192.svg" alt="Eclectuscare" className="w-10 h-10 rounded-xl" />
+          <img src="/icons/icon-192.png" alt="Eclectuscare" className="w-10 h-10 rounded-xl" />
         </Link>
 
         {NAV_ITEMS.map((item) => {
