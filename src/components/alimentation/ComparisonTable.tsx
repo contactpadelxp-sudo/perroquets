@@ -1,19 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
 import type { DailyMeal } from '@/types/database';
-import { calculateNutritionFromMeals } from '@/lib/nutrition';
-import { NutrientBar } from '@/components/ui/NutrientBar';
-
-const NUTRIENTS = [
-  { key: 'vitamin_a_ug', label: 'Vitamine A', unit: 'µg', target: 800 },
-  { key: 'vitamin_c_mg', label: 'Vitamine C', unit: 'mg', target: 50 },
-  { key: 'vitamin_e_mg', label: 'Vitamine E', unit: 'mg', target: 5 },
-  { key: 'calcium_mg', label: 'Calcium', unit: 'mg', target: 150 },
-  { key: 'iron_mg', label: 'Fer', unit: 'mg', target: 3 },
-  { key: 'protein_g', label: 'Protéines', unit: 'g', target: 12 },
-  { key: 'fiber_g', label: 'Fibres', unit: 'g', target: 8 },
-];
 
 interface ComparisonTableProps {
   recommendedMeals: DailyMeal[];
@@ -21,9 +8,6 @@ interface ComparisonTableProps {
 }
 
 export function ComparisonTable({ recommendedMeals, registeredMeals }: ComparisonTableProps) {
-  const suggestedNutrition = useMemo(() => calculateNutritionFromMeals(recommendedMeals), [recommendedMeals]);
-  const registeredNutrition = useMemo(() => calculateNutritionFromMeals(registeredMeals), [registeredMeals]);
-
   // Build food lists for comparison
   const suggestedFoods = new Map<string, { name: string; qty: number; icon: string }>();
   recommendedMeals.forEach(meal => {
@@ -99,23 +83,6 @@ export function ComparisonTable({ recommendedMeals, registeredMeals }: Compariso
         </div>
       </div>
 
-      {/* Nutritional comparison */}
-      <div className="p-4 border-t border-border space-y-3">
-        <h4 className="text-xs font-semibold text-muted">Apport nutritionnel : enregistré vs besoins journaliers</h4>
-        {NUTRIENTS.map(n => {
-          const actual = registeredNutrition.nutrients[n.key] ?? 0;
-          return (
-            <NutrientBar
-              key={n.key}
-              label={n.label}
-              actual={actual}
-              target={n.target}
-              unit={n.unit}
-              critical={n.key === 'vitamin_a_ug'}
-            />
-          );
-        })}
-      </div>
     </div>
   );
 }

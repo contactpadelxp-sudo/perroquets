@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { format, addDays, subDays } from 'date-fns';
 import { toast } from 'sonner';
 import { DailySummary } from '@/components/alimentation/DailySummary';
-import { MealCard } from '@/components/alimentation/MealCard';
+import { MealCard, type DraftItem } from '@/components/alimentation/MealCard';
 import { AddFoodModal } from '@/components/alimentation/AddFoodModal';
 import { ComparisonTable } from '@/components/alimentation/ComparisonTable';
 import { NutritionPanel } from '@/components/alimentation/NutritionPanel';
@@ -36,14 +36,16 @@ export default function AlimentationPage() {
   const [historyTab, setHistoryTab] = useState<'calendar' | 'gallery'>('calendar');
   const [seasonalFoodIds, setSeasonalFoodIds] = useState<Set<string>>(new Set());
 
-  // Separate recommended (suggestions) from user-registered meals
+  // Draft items per meal time — not yet saved to DB
+  const [drafts, setDrafts] = useState<Record<MealTime, DraftItem[]>>({
+    matin: [], midi: [], soir: [],
+  });
+
   const suggestedMeals = useMemo(() => meals.filter(m => m.is_recommended), [meals]);
   const registeredMeals = useMemo(() => meals.filter(m => !m.is_recommended), [meals]);
 
-  // Nutrition from REGISTERED meals only (what the user actually gave)
+  // Nutrition from REGISTERED meals only
   const nutrition = useMemo(() => calculateNutritionFromMeals(registeredMeals), [registeredMeals]);
-  // Nutrition from suggested meals (target)
-  const suggestedNutrition = useMemo(() => calculateNutritionFromMeals(suggestedMeals), [suggestedMeals]);
 
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -65,7 +67,6 @@ export default function AlimentationPage() {
     setCategories(catsRes.data ?? []);
   }, []);
 
-  // Load seasonality
   useEffect(() => {
     const currentMonth = new Date().getMonth() + 1;
     supabase
@@ -80,12 +81,16 @@ export default function AlimentationPage() {
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => { loadFoods(); }, [loadFoods]);
 
+  // Reset drafts when date changes
+  useEffect(() => {
+    setDrafts({ matin: [], midi: [], soir: [] });
+  }, [date]);
+
   // Auto-generate SUGGESTED meals for today
   useEffect(() => {
     if (!user || !foods.length || date !== format(new Date(), 'yyyy-MM-dd')) return;
 
     const autoGenerate = async () => {
-      // Check if suggested meals already exist
       const { data: existing } = await supabase
         .from('daily_meals')
         .select('id')
@@ -119,21 +124,17 @@ export default function AlimentationPage() {
       const cerealPick = pick(byCategory('a1000000-0000-0000-0000-000000000004'), 1);
       const nutPick = pick(byCategory('a1000000-0000-0000-0000-000000000005'), 1);
       const extraLeg = pick(
-        byCategory('a1000000-0000-0000-0000-000000000002').filter(l => !legumesPicked.find(p => p.id === l.id)),
-        1
+        byCategory('a1000000-0000-0000-0000-000000000002').filter(l => !legumesPicked.find(p => p.id === l.id)), 1
       );
 
       const plan: Record<string, { food: any; qty: number }[]> = { matin: [], midi: [], soir: [] };
-
       if (germination) plan.matin.push({ food: germination, qty: 2 });
       if (fruitsPicked[0]) plan.matin.push({ food: fruitsPicked[0], qty: 1.5 });
       if (legumesPicked[0]) plan.matin.push({ food: legumesPicked[0], qty: 1.5 });
-
       if (legumesPicked[1]) plan.midi.push({ food: legumesPicked[1], qty: 1.5 });
       if (legumesPicked[2]) plan.midi.push({ food: legumesPicked[2], qty: 1 });
       if (fruitsPicked[1]) plan.midi.push({ food: fruitsPicked[1], qty: 1 });
       if (cerealPick[0]) plan.midi.push({ food: cerealPick[0], qty: 1 });
-
       if (fruitsPicked[2]) plan.soir.push({ food: fruitsPicked[2], qty: 1 });
       if (extraLeg[0]) plan.soir.push({ food: extraLeg[0], qty: 1.5 });
       if (nutPick[0]) plan.soir.push({ food: nutPick[0], qty: 0.5 });
@@ -150,7 +151,7 @@ export default function AlimentationPage() {
             meal_id: newMeal.id, food_id: item.food.id,
             quantity_tbsp: item.qty, weight_grams: item.qty * 15,
             seed_removed: item.food.remove_seed ? false : null,
-            user_id: user.id, actually_eaten: true, // In suggestions, mark as "would be eaten"
+            user_id: user.id, actually_eaten: true,
           });
         }
       }
@@ -160,55 +161,46 @@ export default function AlimentationPage() {
     autoGenerate();
   }, [user, foods, date]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── User actions for REGISTERED meals ──
+  // ── Draft management ──
 
   const handleAddFood = (mealTime: MealTime) => {
     setActiveMealTime(mealTime);
     setModalOpen(true);
   };
 
-  const handleAddFoodConfirm = async (foodId: string, quantity: number) => {
-    const food = foods.find((f) => f.id === foodId);
-    if (food?.is_forbidden) {
+  const handleAddFoodConfirm = (foodId: string, quantity: number) => {
+    const food = foods.find(f => f.id === foodId);
+    if (!food) return;
+    if (food.is_forbidden) {
       toast.error(`⛔ ${food.name} est un aliment INTERDIT — ${food.danger_note}`);
       return;
     }
 
-    // Find or create a REGISTERED (not recommended) meal for this time
-    const existing = registeredMeals.find((m) => m.meal_time === activeMealTime);
-    let mealId: string;
+    // Add to local drafts (NOT to DB yet)
+    const draftItem: DraftItem = {
+      id: `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      food,
+      quantity_tbsp: quantity,
+    };
 
-    if (existing) {
-      mealId = existing.id;
-    } else {
-      const { data, error } = await supabase
-        .from('daily_meals')
-        .insert({ meal_date: date, meal_time: activeMealTime, is_recommended: false, user_id: user!.id })
-        .select().single();
-      if (error) { toast.error('Erreur création repas'); return; }
-      mealId = data.id;
-    }
-
-    await supabase.from('meal_items').insert({
-      meal_id: mealId, food_id: foodId,
-      quantity_tbsp: quantity, weight_grams: quantity * 15,
-      seed_removed: food?.remove_seed ? false : null,
-      user_id: user!.id, actually_eaten: true,
-    });
-
-    toast.success(`${food?.name} ajouté !`);
-    await loadData();
+    setDrafts(prev => ({
+      ...prev,
+      [activeMealTime]: [...prev[activeMealTime], draftItem],
+    }));
+    toast.success(`${food.name} ajouté au brouillon`);
   };
 
-  const handleToggleEaten = async (itemId: string, eaten: boolean) => {
-    await supabase.from('meal_items').update({ actually_eaten: eaten }).eq('id', itemId);
-    await loadData();
+  const handleRemoveDraft = (mealTime: MealTime, draftId: string) => {
+    setDrafts(prev => ({
+      ...prev,
+      [mealTime]: prev[mealTime].filter(d => d.id !== draftId),
+    }));
   };
 
-  const handleToggleSeed = async (itemId: string, removed: boolean) => {
-    await supabase.from('meal_items').update({ seed_removed: removed }).eq('id', itemId);
-    toast.success(removed ? 'Noyau confirmé retiré ✓' : 'Retrait noyau non confirmé');
-    await loadData();
+  const handleMealSaved = (mealTime: MealTime) => {
+    // Clear drafts for this meal time after save
+    setDrafts(prev => ({ ...prev, [mealTime]: [] }));
+    loadData();
   };
 
   const handleDeleteItem = async (itemId: string) => {
@@ -217,7 +209,6 @@ export default function AlimentationPage() {
     await loadData();
   };
 
-  // Get registered meal for a time, fallback null
   const getRegisteredMeal = (time: MealTime) => registeredMeals.find(m => m.meal_time === time) ?? null;
   const getSuggestedMeal = (time: MealTime) => suggestedMeals.find(m => m.meal_time === time) ?? null;
 
@@ -225,7 +216,7 @@ export default function AlimentationPage() {
     <div className="space-y-6 max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold">🍽️ Alimentation</h1>
 
-      {/* Section A: Daily Summary — from REGISTERED meals */}
+      {/* Résumé du jour — basé sur gamelles enregistrées */}
       <DailySummary
         date={date}
         meals={registeredMeals}
@@ -266,37 +257,41 @@ export default function AlimentationPage() {
         </div>
       )}
 
-      {/* ════ GAMELLES ENREGISTRÉES (par l'utilisateur) ════ */}
+      {/* ════ GAMELLES ENREGISTRÉES ════ */}
       <div className="space-y-3">
         <h2 className="font-semibold text-sm">📝 Gamelles enregistrées</h2>
-        <p className="text-xs text-muted">Ajoutez ici ce que vous avez réellement donné à votre oiseau.</p>
+        <p className="text-xs text-muted">
+          Ajoutez les aliments puis cliquez sur &quot;Enregistrer la gamelle&quot; pour valider.
+        </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {(['matin', 'midi', 'soir'] as MealTime[]).map((time) => (
             <MealCard
               key={time}
               mealTime={time}
               meal={getRegisteredMeal(time)}
+              date={date}
               seasonalFoodIds={seasonalFoodIds}
               onAddFood={handleAddFood}
-              onToggleEaten={handleToggleEaten}
-              onToggleSeed={handleToggleSeed}
               onDeleteItem={handleDeleteItem}
+              onMealSaved={() => handleMealSaved(time)}
               onPhotoChange={loadData}
+              draftItems={drafts[time]}
+              onRemoveDraft={(draftId) => handleRemoveDraft(time, draftId)}
             />
           ))}
         </div>
       </div>
 
-      {/* ════ COMPARAISON suggéré vs enregistré ════ */}
+      {/* Comparaison suggéré vs enregistré */}
       <ComparisonTable recommendedMeals={suggestedMeals} registeredMeals={registeredMeals} />
 
-      {/* ════ BILAN NUTRITIONNEL — basé sur gamelles enregistrées uniquement ════ */}
+      {/* Bilan nutritionnel — gamelles enregistrées uniquement */}
       <NutritionPanel meals={registeredMeals} />
 
-      {/* Alerts */}
+      {/* Alertes */}
       <AlertsPanel alerts={nutrition.alerts} />
 
-      {/* History */}
+      {/* Historique */}
       <div className="space-y-4">
         <div className="flex gap-2">
           <button
