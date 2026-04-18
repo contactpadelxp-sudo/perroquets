@@ -168,26 +168,27 @@ export default function AlimentationPage() {
     setModalOpen(true);
   };
 
-  const handleAddFoodConfirm = (foodId: string, quantity: number) => {
-    const food = foods.find(f => f.id === foodId);
-    if (!food) return;
-    if (food.is_forbidden) {
-      toast.error(`⛔ ${food.name} est un aliment INTERDIT — ${food.danger_note}`);
-      return;
+  const handleAddFoodConfirm = (items: { foodId: string; quantity: number }[]) => {
+    const newDrafts: DraftItem[] = [];
+
+    for (const item of items) {
+      const food = foods.find(f => f.id === item.foodId);
+      if (!food || food.is_forbidden) continue;
+
+      newDrafts.push({
+        id: `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        food,
+        quantity_tbsp: item.quantity,
+      });
     }
 
-    // Add to local drafts (NOT to DB yet)
-    const draftItem: DraftItem = {
-      id: `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      food,
-      quantity_tbsp: quantity,
-    };
+    if (newDrafts.length === 0) return;
 
     setDrafts(prev => ({
       ...prev,
-      [activeMealTime]: [...prev[activeMealTime], draftItem],
+      [activeMealTime]: [...prev[activeMealTime], ...newDrafts],
     }));
-    toast.success(`${food.name} ajouté au brouillon`);
+    toast.success(`${newDrafts.length} aliment${newDrafts.length > 1 ? 's' : ''} ajouté${newDrafts.length > 1 ? 's' : ''}`);
   };
 
   const handleRemoveDraft = (mealTime: MealTime, draftId: string) => {
@@ -330,7 +331,7 @@ export default function AlimentationPage() {
         categories={categories}
         mealTime={activeMealTime}
         seasonalFoodIds={seasonalFoodIds}
-        onAdd={handleAddFoodConfirm}
+        onAddMultiple={handleAddFoodConfirm}
       />
     </div>
   );

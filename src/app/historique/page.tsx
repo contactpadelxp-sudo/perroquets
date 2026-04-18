@@ -59,6 +59,7 @@ export default function HistoriquePage() {
         )
       `)
       .eq('user_id', user.id)
+      .eq('is_recommended', false)
       .gte('meal_date', monthStart)
       .lte('meal_date', monthEnd)
       .order('meal_date', { ascending: false });
