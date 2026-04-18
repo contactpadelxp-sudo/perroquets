@@ -380,7 +380,7 @@ export default function DashboardPage() {
       {/* Floating CTA */}
       <Link
         href="/alimentation"
-        className="fixed bottom-24 right-4 lg:bottom-6 lg:right-6 z-40 flex items-center gap-2 px-5 py-3 rounded-2xl bg-accent-green hover:bg-accent-green/90 text-white font-semibold shadow-lg shadow-accent-green/20 transition-all hover:scale-105"
+        className="fixed bottom-28 right-3 lg:bottom-6 lg:right-6 z-40 flex items-center gap-2 px-4 py-3 rounded-2xl bg-accent-green active:bg-accent-green/80 text-white font-semibold shadow-lg shadow-accent-green/20 transition-all text-sm"
       >
         <Sparkles size={18} />
         Voir les gamelles du jour

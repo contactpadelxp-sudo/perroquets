@@ -29,9 +29,9 @@ export function Navbar() {
 
   return (
     <>
-      {/* Mobile: bottom bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden">
-        <div className="mx-2 mb-2 flex items-center justify-around rounded-2xl bg-card/90 backdrop-blur-xl border border-border px-2 py-2">
+      {/* Mobile: bottom bar — safe area aware for notched phones */}
+      <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden pb-[env(safe-area-inset-bottom)]">
+        <div className="mx-1.5 mb-1.5 flex items-center justify-around rounded-2xl bg-card/95 backdrop-blur-xl border border-border px-1 py-1.5">
           {NAV_ITEMS.map((item) => {
             const isActive =
               item.href === '/'
@@ -43,14 +43,14 @@ export function Navbar() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  'flex flex-col items-center gap-0.5 rounded-xl px-3 py-2 transition-all duration-200',
+                  'flex flex-col items-center gap-0.5 rounded-xl px-1.5 py-1.5 min-w-[44px] min-h-[44px] justify-center transition-all duration-200',
                   isActive
-                    ? 'bg-accent-violet/10 scale-105'
-                    : 'hover:bg-white/5'
+                    ? 'bg-accent-violet/10'
+                    : 'active:bg-white/10'
                 )}
               >
                 <Icon
-                  size={20}
+                  size={18}
                   className={cn(
                     'transition-colors duration-200',
                     isActive ? item.color : 'text-muted'
@@ -58,7 +58,7 @@ export function Navbar() {
                 />
                 <span
                   className={cn(
-                    'text-[10px] font-medium transition-colors duration-200',
+                    'text-[9px] font-medium leading-tight transition-colors duration-200',
                     isActive ? 'text-foreground' : 'text-muted'
                   )}
                 >

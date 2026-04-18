@@ -12,12 +12,14 @@
   --color-info: oklch(0.588 0.199 259);
   --color-muted: oklch(0.552 0.016 286);
   --color-border: oklch(0.265 0.005 286);
-  --font-sans: "Inter", "Geist", system-ui, sans-serif;
+  --font-sans: "Inter", "Geist", system-ui, -apple-system, sans-serif;
 }
 
 @layer base {
   html {
     color-scheme: dark;
+    /* Prevent pull-to-refresh on mobile */
+    overscroll-behavior: none;
   }
 
   body {
@@ -26,18 +28,39 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* PWA: prevent text selection on UI elements */
+    -webkit-user-select: none;
+    user-select: none;
+    /* PWA: prevent tap highlight on iOS */
+    -webkit-tap-highlight-color: transparent;
+    /* Safe area padding for notched devices */
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Allow text selection on inputs and text content */
+  input, textarea, [contenteditable], p, span, td, th, li, h1, h2, h3, h4 {
+    -webkit-user-select: text;
+    user-select: text;
   }
 
   /* Scrollbar */
   ::-webkit-scrollbar {
-    width: 6px;
+    width: 4px;
   }
   ::-webkit-scrollbar-track {
-    background: var(--color-background);
+    background: transparent;
   }
   ::-webkit-scrollbar-thumb {
     background: var(--color-border);
-    border-radius: 3px;
+    border-radius: 2px;
+  }
+
+  /* PWA standalone: hide address bar artifacts */
+  @media (display-mode: standalone) {
+    body {
+      /* Extra bottom padding for home indicator on iOS */
+      padding-bottom: calc(env(safe-area-inset-bottom) + 4px);
+    }
   }
 }
 
@@ -48,9 +71,15 @@
     border: 1px solid var(--color-border);
     transition: all 200ms ease;
   }
-  .card:hover {
-    transform: scale(1.01);
-    box-shadow: 0 4px 24px oklch(0.627 0.265 303 / 0.08);
+  /* Only scale on hover for non-touch devices */
+  @media (hover: hover) {
+    .card:hover {
+      transform: scale(1.01);
+      box-shadow: 0 4px 24px oklch(0.627 0.265 303 / 0.08);
+    }
+  }
+  .card:active {
+    transform: scale(0.99);
   }
   .card-static {
     background-color: var(--color-card);
