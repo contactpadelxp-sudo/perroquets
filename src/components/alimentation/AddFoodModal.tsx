@@ -94,7 +94,7 @@ export function AddFoodModal({
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleClose} />
-      <div className="relative w-full sm:max-w-lg max-h-[90dvh] sm:max-h-[85vh] bg-card rounded-t-3xl sm:rounded-3xl border border-border overflow-hidden flex flex-col pb-[env(safe-area-inset-bottom)]">
+      <div className="relative w-full sm:max-w-lg max-h-[90dvh] sm:max-h-[85vh] bg-card rounded-t-3xl sm:rounded-3xl border border-border overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h3 className="font-semibold">

@@ -14,9 +14,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="pb-24 lg:pb-0 lg:pl-20 pt-[env(safe-area-inset-top)]">
+    <div className="pb-20 lg:pb-0 lg:pl-20">
       <Navbar />
-      <main className="mx-auto max-w-6xl px-3 sm:px-4 py-2 sm:py-4">
+      <main className="mx-auto max-w-6xl px-3 sm:px-4 pt-2 pb-2 sm:pt-4 sm:pb-4">
         <PageHeader />
         {children}
       </main>

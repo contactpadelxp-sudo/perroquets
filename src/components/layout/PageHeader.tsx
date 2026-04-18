@@ -8,7 +8,7 @@ export function PageHeader() {
   const { user } = useAuth();
 
   return (
-    <div className="flex items-center justify-between pt-[env(safe-area-inset-top)] mb-2">
+    <div className="flex items-center justify-between mb-2">
       {/* User avatar (mobile) */}
       <div className="lg:hidden">
         {user && (
@@ -27,7 +27,7 @@ export function PageHeader() {
         )}
       </div>
 
-      {/* Spacer on desktop (sidebar already present) */}
+      {/* Spacer on desktop */}
       <div className="hidden lg:block" />
 
       {/* Settings icon */}
