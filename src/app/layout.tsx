@@ -40,8 +40,9 @@ export default function RootLayout({
   return (
     <html lang="fr" className={`${inter.variable} antialiased dark`} style={{ colorScheme: 'dark' }}>
       <head>
-        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
-        <link rel="icon" type="image/png" href="/favicon.png" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
+        <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192.png" />
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
       </head>
       <body className="min-h-screen bg-background text-foreground overscroll-none">
         <Providers>
