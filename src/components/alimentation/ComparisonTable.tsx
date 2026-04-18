@@ -1,104 +1,120 @@
 'use client';
 
+import { useMemo } from 'react';
 import type { DailyMeal } from '@/types/database';
+import { calculateNutritionFromMeals } from '@/lib/nutrition';
+import { NutrientBar } from '@/components/ui/NutrientBar';
+
+const NUTRIENTS = [
+  { key: 'vitamin_a_ug', label: 'Vitamine A', unit: 'µg', target: 800 },
+  { key: 'vitamin_c_mg', label: 'Vitamine C', unit: 'mg', target: 50 },
+  { key: 'vitamin_e_mg', label: 'Vitamine E', unit: 'mg', target: 5 },
+  { key: 'calcium_mg', label: 'Calcium', unit: 'mg', target: 150 },
+  { key: 'iron_mg', label: 'Fer', unit: 'mg', target: 3 },
+  { key: 'protein_g', label: 'Protéines', unit: 'g', target: 12 },
+  { key: 'fiber_g', label: 'Fibres', unit: 'g', target: 8 },
+];
 
 interface ComparisonTableProps {
   recommendedMeals: DailyMeal[];
+  registeredMeals: DailyMeal[];
 }
 
-export function ComparisonTable({ recommendedMeals }: ComparisonTableProps) {
-  if (recommendedMeals.length === 0) {
-    return (
-      <div className="card-static p-4">
-        <p className="text-sm text-muted text-center py-4">
-          Aucune gamelle recommandée pour ce jour.
-        </p>
-      </div>
-    );
-  }
+export function ComparisonTable({ recommendedMeals, registeredMeals }: ComparisonTableProps) {
+  const suggestedNutrition = useMemo(() => calculateNutritionFromMeals(recommendedMeals), [recommendedMeals]);
+  const registeredNutrition = useMemo(() => calculateNutritionFromMeals(registeredMeals), [registeredMeals]);
 
-  // Build list of recommended items with their eaten status
-  // All data comes from the recommended meals themselves (meal_items.actually_eaten)
-  const items: {
-    foodId: string;
-    name: string;
-    recQty: number;
-    eaten: boolean;
-    mealTime: string;
-  }[] = [];
-
-  recommendedMeals.forEach((meal) => {
-    meal.meal_items?.forEach((item) => {
-      if (item.food) {
-        items.push({
-          foodId: item.food.id,
-          name: item.food.name,
-          recQty: item.quantity_tbsp || 1,
-          eaten: item.actually_eaten,
-          mealTime: meal.meal_time,
-        });
-      }
+  // Build food lists for comparison
+  const suggestedFoods = new Map<string, { name: string; qty: number; icon: string }>();
+  recommendedMeals.forEach(meal => {
+    meal.meal_items?.forEach(item => {
+      if (!item.food) return;
+      const existing = suggestedFoods.get(item.food.id);
+      suggestedFoods.set(item.food.id, {
+        name: item.food.name,
+        qty: (existing?.qty || 0) + (item.quantity_tbsp || 1),
+        icon: item.food.category?.icon ?? '🍽️',
+      });
     });
   });
 
-  if (items.length === 0) {
-    return (
-      <div className="card-static p-4">
-        <p className="text-sm text-muted text-center py-4">
-          Aucun aliment dans les gamelles recommandées.
-        </p>
-      </div>
-    );
+  const registeredFoods = new Map<string, { name: string; qty: number; icon: string }>();
+  registeredMeals.forEach(meal => {
+    meal.meal_items?.forEach(item => {
+      if (!item.food || !item.actually_eaten) return;
+      const existing = registeredFoods.get(item.food.id);
+      registeredFoods.set(item.food.id, {
+        name: item.food.name,
+        qty: (existing?.qty || 0) + (item.quantity_tbsp || 1),
+        icon: item.food.category?.icon ?? '🍽️',
+      });
+    });
+  });
+
+  if (recommendedMeals.length === 0 && registeredMeals.length === 0) {
+    return null;
   }
-
-  const MEAL_LABELS: Record<string, string> = {
-    matin: '🌅',
-    midi: '☀️',
-    soir: '🌙',
-  };
-
-  const eatenCount = items.filter((i) => i.eaten).length;
-  const totalCount = items.length;
-  const pct = Math.round((eatenCount / totalCount) * 100);
 
   return (
     <div className="card-static overflow-hidden">
-      <div className="p-4 border-b border-border flex items-center justify-between">
-        <h3 className="font-semibold text-sm">📋 Suivi des gamelles recommandées</h3>
-        <span className="text-xs text-muted">
-          {eatenCount}/{totalCount} mangés ({pct}%)
-        </span>
+      <div className="p-4 border-b border-border">
+        <h3 className="font-semibold text-sm">📋 Comparaison Suggéré vs Enregistré</h3>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-muted">
-              <th className="text-left p-3 font-medium">Repas</th>
-              <th className="text-left p-3 font-medium">Aliment</th>
-              <th className="text-center p-3 font-medium">Quantité</th>
-              <th className="text-center p-3 font-medium">Mangé ?</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item, i) => (
-              <tr
-                key={`${item.foodId}-${item.mealTime}-${i}`}
-                className="border-b border-border/50 hover:bg-white/[0.02]"
-              >
-                <td className="p-3 text-muted">{MEAL_LABELS[item.mealTime]}</td>
-                <td className="p-3">{item.name}</td>
-                <td className="p-3 text-center text-muted">{item.recQty} càs</td>
-                <td className="p-3 text-center">
-                  {item.eaten ? (
-                    <span className="text-accent-green">✅</span>
-                  ) : (
-                    <span className="text-danger">❌</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+
+      {/* Food comparison */}
+      <div className="grid grid-cols-2 divide-x divide-border">
+        {/* Suggested */}
+        <div className="p-3 space-y-1">
+          <h4 className="text-xs font-semibold text-accent-violet mb-2">Suggéré</h4>
+          {suggestedFoods.size === 0 ? (
+            <p className="text-xs text-muted">Aucune suggestion</p>
+          ) : (
+            [...suggestedFoods.values()].map((f, i) => (
+              <div key={i} className="flex items-center gap-1.5 text-xs">
+                <span>{f.icon}</span>
+                <span className="flex-1 truncate">{f.name}</span>
+                <span className="text-muted">{f.qty} càs</span>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Registered */}
+        <div className="p-3 space-y-1">
+          <h4 className="text-xs font-semibold text-accent-green mb-2">Enregistré</h4>
+          {registeredFoods.size === 0 ? (
+            <p className="text-xs text-muted">Aucun aliment enregistré</p>
+          ) : (
+            [...registeredFoods.values()].map((f, i) => {
+              const inSuggested = [...suggestedFoods.values()].some(s => s.name === f.name);
+              return (
+                <div key={i} className="flex items-center gap-1.5 text-xs">
+                  <span>{inSuggested ? '✅' : '➕'}</span>
+                  <span className="flex-1 truncate">{f.name}</span>
+                  <span className="text-muted">{f.qty} càs</span>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* Nutritional comparison */}
+      <div className="p-4 border-t border-border space-y-3">
+        <h4 className="text-xs font-semibold text-muted">Apport nutritionnel : enregistré vs besoins journaliers</h4>
+        {NUTRIENTS.map(n => {
+          const actual = registeredNutrition.nutrients[n.key] ?? 0;
+          return (
+            <NutrientBar
+              key={n.key}
+              label={n.label}
+              actual={actual}
+              target={n.target}
+              unit={n.unit}
+              critical={n.key === 'vitamin_a_ug'}
+            />
+          );
+        })}
       </div>
     </div>
   );

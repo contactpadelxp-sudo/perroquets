@@ -9,7 +9,6 @@ import { AddFoodModal } from '@/components/alimentation/AddFoodModal';
 import { ComparisonTable } from '@/components/alimentation/ComparisonTable';
 import { NutritionPanel } from '@/components/alimentation/NutritionPanel';
 import { AlertsPanel } from '@/components/alimentation/AlertsPanel';
-import { MealGenerator } from '@/components/alimentation/MealGenerator';
 import { HistoryCalendar } from '@/components/alimentation/HistoryCalendar';
 import { NutritionCharts } from '@/components/alimentation/NutritionCharts';
 import { PhotoGallery } from '@/components/alimentation/PhotoGallery';
@@ -18,6 +17,13 @@ import { useAuth } from '@/lib/auth-context';
 import { calculateNutritionFromMeals } from '@/lib/nutrition';
 import type { DailyMeal, Food, FoodCategory, MealTime } from '@/types/database';
 import { cn } from '@/lib/utils';
+import { Sparkles } from 'lucide-react';
+
+const MEAL_LABELS: Record<string, string> = {
+  matin: '🌅 Matin',
+  midi: '☀️ Midi',
+  soir: '🌙 Soir',
+};
 
 export default function AlimentationPage() {
   const { user } = useAuth();
@@ -30,8 +36,14 @@ export default function AlimentationPage() {
   const [historyTab, setHistoryTab] = useState<'calendar' | 'gallery'>('calendar');
   const [seasonalFoodIds, setSeasonalFoodIds] = useState<Set<string>>(new Set());
 
-  // Nutrition calculated client-side from actual meals
-  const nutrition = useMemo(() => calculateNutritionFromMeals(meals), [meals]);
+  // Separate recommended (suggestions) from user-registered meals
+  const suggestedMeals = useMemo(() => meals.filter(m => m.is_recommended), [meals]);
+  const registeredMeals = useMemo(() => meals.filter(m => !m.is_recommended), [meals]);
+
+  // Nutrition from REGISTERED meals only (what the user actually gave)
+  const nutrition = useMemo(() => calculateNutritionFromMeals(registeredMeals), [registeredMeals]);
+  // Nutrition from suggested meals (target)
+  const suggestedNutrition = useMemo(() => calculateNutritionFromMeals(suggestedMeals), [suggestedMeals]);
 
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -68,28 +80,24 @@ export default function AlimentationPage() {
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => { loadFoods(); }, [loadFoods]);
 
-  // Auto-generate meals for today
+  // Auto-generate SUGGESTED meals for today
   useEffect(() => {
     if (!user || !foods.length || date !== format(new Date(), 'yyyy-MM-dd')) return;
 
     const autoGenerate = async () => {
-      // Check if already has meals for today
+      // Check if suggested meals already exist
       const { data: existing } = await supabase
         .from('daily_meals')
         .select('id')
         .eq('meal_date', date)
         .eq('user_id', user.id)
+        .eq('is_recommended', true)
         .limit(1);
 
-      if (existing && existing.length > 0) return; // Already has meals
+      if (existing && existing.length > 0) return;
 
-      // Generate simple balanced meals from available foods
       const safeFoods = foods.filter(f => !f.is_forbidden);
-      const fruits = safeFoods.filter(f => f.category_id === 'a1000000-0000-0000-0000-000000000001');
-      const legumes = safeFoods.filter(f => f.category_id === 'a1000000-0000-0000-0000-000000000002');
-      const germinations = safeFoods.filter(f => f.category_id === 'a1000000-0000-0000-0000-000000000003');
-      const cereales = safeFoods.filter(f => f.category_id === 'a1000000-0000-0000-0000-000000000004');
-      const noix = safeFoods.filter(f => f.category_id === 'a1000000-0000-0000-0000-000000000005');
+      const byCategory = (catId: string) => safeFoods.filter(f => f.category_id === catId);
 
       function pick(arr: any[], n: number, requireBeta = false): any[] {
         const shuffled = [...arr].sort(() => Math.random() - 0.5);
@@ -105,65 +113,54 @@ export default function AlimentationPage() {
         return result;
       }
 
-      const plan: Record<string, { food: any; qty: number }[]> = {
-        matin: [],
-        midi: [],
-        soir: [],
-      };
+      const fruitsPicked = pick(byCategory('a1000000-0000-0000-0000-000000000001'), 3, true);
+      const legumesPicked = pick(byCategory('a1000000-0000-0000-0000-000000000002'), 3, true);
+      const germination = byCategory('a1000000-0000-0000-0000-000000000003')[0];
+      const cerealPick = pick(byCategory('a1000000-0000-0000-0000-000000000004'), 1);
+      const nutPick = pick(byCategory('a1000000-0000-0000-0000-000000000005'), 1);
+      const extraLeg = pick(
+        byCategory('a1000000-0000-0000-0000-000000000002').filter(l => !legumesPicked.find(p => p.id === l.id)),
+        1
+      );
 
-      // Matin: germination + 1 fruit beta + 1 légume
-      if (germinations[0]) plan.matin.push({ food: germinations[0], qty: 2 });
-      const fruitsPicked = pick(fruits, 3, true);
-      const legumesPicked = pick(legumes, 3, true);
+      const plan: Record<string, { food: any; qty: number }[]> = { matin: [], midi: [], soir: [] };
+
+      if (germination) plan.matin.push({ food: germination, qty: 2 });
       if (fruitsPicked[0]) plan.matin.push({ food: fruitsPicked[0], qty: 1.5 });
       if (legumesPicked[0]) plan.matin.push({ food: legumesPicked[0], qty: 1.5 });
 
-      // Midi: 2 légumes + 1 fruit + céréale
       if (legumesPicked[1]) plan.midi.push({ food: legumesPicked[1], qty: 1.5 });
       if (legumesPicked[2]) plan.midi.push({ food: legumesPicked[2], qty: 1 });
       if (fruitsPicked[1]) plan.midi.push({ food: fruitsPicked[1], qty: 1 });
-      const cerealPick = pick(cereales, 1);
       if (cerealPick[0]) plan.midi.push({ food: cerealPick[0], qty: 1 });
 
-      // Soir: 1 fruit + 1 légume + noix
       if (fruitsPicked[2]) plan.soir.push({ food: fruitsPicked[2], qty: 1 });
-      const extraLeg = pick(legumes.filter(l => !legumesPicked.find(p => p.id === l.id)), 1);
       if (extraLeg[0]) plan.soir.push({ food: extraLeg[0], qty: 1.5 });
-      const nutPick = pick(noix, 1);
       if (nutPick[0]) plan.soir.push({ food: nutPick[0], qty: 0.5 });
 
-      // Save to database
       for (const [mealTime, items] of Object.entries(plan)) {
         if (items.length === 0) continue;
-        const { data: newMeal, error } = await supabase
+        const { data: newMeal } = await supabase
           .from('daily_meals')
           .insert({ meal_date: date, meal_time: mealTime, is_recommended: true, user_id: user.id })
-          .select()
-          .single();
-        if (error || !newMeal) continue;
-
+          .select().single();
+        if (!newMeal) continue;
         for (const item of items) {
           await supabase.from('meal_items').insert({
-            meal_id: newMeal.id,
-            food_id: item.food.id,
-            quantity_tbsp: item.qty,
-            weight_grams: item.qty * 15,
+            meal_id: newMeal.id, food_id: item.food.id,
+            quantity_tbsp: item.qty, weight_grams: item.qty * 15,
             seed_removed: item.food.remove_seed ? false : null,
-            user_id: user.id,
-            actually_eaten: false, // Not eaten yet, just suggested
+            user_id: user.id, actually_eaten: true, // In suggestions, mark as "would be eaten"
           });
         }
       }
-
       await loadData();
     };
 
     autoGenerate();
   }, [user, foods, date]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const getMeal = (mealTime: MealTime): DailyMeal | null => {
-    return meals.find((m) => m.meal_time === mealTime) ?? null;
-  };
+  // ── User actions for REGISTERED meals ──
 
   const handleAddFood = (mealTime: MealTime) => {
     setActiveMealTime(mealTime);
@@ -177,8 +174,8 @@ export default function AlimentationPage() {
       return;
     }
 
-    // Find existing non-recommended meal for this time, or create one
-    const existing = meals.find((m) => m.meal_time === activeMealTime && !m.is_recommended);
+    // Find or create a REGISTERED (not recommended) meal for this time
+    const existing = registeredMeals.find((m) => m.meal_time === activeMealTime);
     let mealId: string;
 
     if (existing) {
@@ -186,24 +183,19 @@ export default function AlimentationPage() {
     } else {
       const { data, error } = await supabase
         .from('daily_meals')
-        .insert({ meal_date: date, meal_time: activeMealTime, user_id: user!.id })
-        .select()
-        .single();
+        .insert({ meal_date: date, meal_time: activeMealTime, is_recommended: false, user_id: user!.id })
+        .select().single();
       if (error) { toast.error('Erreur création repas'); return; }
       mealId = data.id;
     }
 
-    const { error } = await supabase.from('meal_items').insert({
-      meal_id: mealId,
-      food_id: foodId,
-      quantity_tbsp: quantity,
-      weight_grams: quantity * 15,
+    await supabase.from('meal_items').insert({
+      meal_id: mealId, food_id: foodId,
+      quantity_tbsp: quantity, weight_grams: quantity * 15,
       seed_removed: food?.remove_seed ? false : null,
-      user_id: user!.id,
-      actually_eaten: true,
+      user_id: user!.id, actually_eaten: true,
     });
 
-    if (error) { toast.error('Erreur ajout aliment'); return; }
     toast.success(`${food?.name} ajouté !`);
     await loadData();
   };
@@ -225,56 +217,86 @@ export default function AlimentationPage() {
     await loadData();
   };
 
-  const recommendedMeals = meals.filter((m) => m.is_recommended);
-  const hasRealMeals = meals.some((m) => !m.is_recommended);
+  // Get registered meal for a time, fallback null
+  const getRegisteredMeal = (time: MealTime) => registeredMeals.find(m => m.meal_time === time) ?? null;
+  const getSuggestedMeal = (time: MealTime) => suggestedMeals.find(m => m.meal_time === time) ?? null;
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold">🍽️ Alimentation</h1>
 
-      {/* Section A: Daily Summary — based on actually eaten foods */}
+      {/* Section A: Daily Summary — from REGISTERED meals */}
       <DailySummary
         date={date}
-        meals={meals}
+        meals={registeredMeals}
         onPrevDay={() => setDate(format(subDays(new Date(date), 1), 'yyyy-MM-dd'))}
         onNextDay={() => setDate(format(addDays(new Date(date), 1), 'yyyy-MM-dd'))}
       />
 
-      {/* Auto-generation info */}
-      <MealGenerator
-        date={date}
-        recommendedMeals={recommendedMeals}
-        hasRealMeals={hasRealMeals}
-        onRegenerated={loadData}
-      />
+      {/* ════ GAMELLES SUGGÉRÉES ════ */}
+      {suggestedMeals.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Sparkles size={16} className="text-accent-violet" />
+            <h2 className="font-semibold text-sm text-accent-violet">Gamelles suggérées</h2>
+            <span className="text-xs text-muted">— Suggestion automatique du jour</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {(['matin', 'midi', 'soir'] as MealTime[]).map((time) => {
+              const meal = getSuggestedMeal(time);
+              const items = meal?.meal_items ?? [];
+              return (
+                <div key={time} className="card-static p-3 space-y-2 opacity-80">
+                  <h4 className="text-xs font-semibold text-muted">{MEAL_LABELS[time]}</h4>
+                  {items.length === 0 ? (
+                    <p className="text-xs text-muted/50">—</p>
+                  ) : (
+                    items.map((item: any) => (
+                      <div key={item.id} className="flex items-center gap-2 text-xs">
+                        <span>{item.food?.category?.icon ?? '🍽️'}</span>
+                        <span className="flex-1 truncate">{item.food?.name}</span>
+                        <span className="text-muted">{item.quantity_tbsp} càs</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
-      {/* Section B: Meal Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {(['matin', 'midi', 'soir'] as MealTime[]).map((time) => (
-          <MealCard
-            key={time}
-            mealTime={time}
-            meal={getMeal(time)}
-            seasonalFoodIds={seasonalFoodIds}
-            onAddFood={handleAddFood}
-            onToggleEaten={handleToggleEaten}
-            onToggleSeed={handleToggleSeed}
-            onDeleteItem={handleDeleteItem}
-            onPhotoChange={loadData}
-          />
-        ))}
+      {/* ════ GAMELLES ENREGISTRÉES (par l'utilisateur) ════ */}
+      <div className="space-y-3">
+        <h2 className="font-semibold text-sm">📝 Gamelles enregistrées</h2>
+        <p className="text-xs text-muted">Ajoutez ici ce que vous avez réellement donné à votre oiseau.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {(['matin', 'midi', 'soir'] as MealTime[]).map((time) => (
+            <MealCard
+              key={time}
+              mealTime={time}
+              meal={getRegisteredMeal(time)}
+              seasonalFoodIds={seasonalFoodIds}
+              onAddFood={handleAddFood}
+              onToggleEaten={handleToggleEaten}
+              onToggleSeed={handleToggleSeed}
+              onDeleteItem={handleDeleteItem}
+              onPhotoChange={loadData}
+            />
+          ))}
+        </div>
       </div>
 
-      {/* Section C: Comparison recommandé vs mangé */}
-      <ComparisonTable recommendedMeals={recommendedMeals} />
+      {/* ════ COMPARAISON suggéré vs enregistré ════ */}
+      <ComparisonTable recommendedMeals={suggestedMeals} registeredMeals={registeredMeals} />
 
-      {/* Section D: Nutrition Panel — calcul en temps réel à partir des aliments mangés */}
-      <NutritionPanel meals={meals} />
+      {/* ════ BILAN NUTRITIONNEL — basé sur gamelles enregistrées uniquement ════ */}
+      <NutritionPanel meals={registeredMeals} />
 
-      {/* Section E: Alerts */}
+      {/* Alerts */}
       <AlertsPanel alerts={nutrition.alerts} />
 
-      {/* Section G: History */}
+      {/* History */}
       <div className="space-y-4">
         <div className="flex gap-2">
           <button
@@ -296,7 +318,6 @@ export default function AlimentationPage() {
             📷 Galerie photos
           </button>
         </div>
-
         {historyTab === 'calendar' ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <HistoryCalendar selectedDate={date} onSelectDate={setDate} />
@@ -307,7 +328,6 @@ export default function AlimentationPage() {
         )}
       </div>
 
-      {/* Add Food Modal */}
       <AddFoodModal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
