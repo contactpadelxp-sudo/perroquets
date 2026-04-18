@@ -29,7 +29,7 @@ export function Navbar() {
     <>
       {/* Mobile: bottom bar */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden">
-        <div className="mx-2 mb-2 flex items-center justify-around rounded-2xl bg-card/95 backdrop-blur-xl border border-border px-1 py-1.5">
+        <div className="mx-2 mb-4 flex items-center justify-around rounded-2xl bg-card/95 backdrop-blur-xl border border-border px-1 py-1.5">
           {NAV_ITEMS.map((item) => {
             const isActive =
               item.href === '/'
