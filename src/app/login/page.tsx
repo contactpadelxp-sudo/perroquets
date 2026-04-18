@@ -124,7 +124,7 @@ function LoginContent() {
   };
 
   return (
-    <div className="min-h-[100dvh] flex items-center justify-center bg-background px-4 py-8">
+    <div className="min-h-[100dvh] flex items-center justify-center bg-background px-4 py-8 pt-[calc(env(safe-area-inset-top)+2rem)] pb-[calc(env(safe-area-inset-bottom)+2rem)]">
       <div className="w-full max-w-md space-y-8">
         {/* Logo & title */}
         <div className="text-center space-y-3">

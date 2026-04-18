@@ -221,7 +221,7 @@ export default function CalendrierPage() {
       {selectedEvent && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setSelectedEvent(null)} />
-          <div className="relative w-full max-w-lg bg-card rounded-3xl border border-border overflow-hidden">
+          <div className="relative w-full max-w-lg max-h-[85dvh] bg-card rounded-3xl border border-border overflow-hidden overflow-y-auto">
             <div
               className="p-4 flex items-center justify-between"
               style={{ backgroundColor: (selectedEvent.color ?? '#A855F7') + '10' }}

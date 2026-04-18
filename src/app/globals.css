@@ -33,8 +33,6 @@
     user-select: none;
     /* PWA: prevent tap highlight on iOS */
     -webkit-tap-highlight-color: transparent;
-    /* Safe area padding for notched devices */
-    padding-bottom: env(safe-area-inset-bottom);
   }
 
   /* Allow text selection on inputs and text content */
@@ -55,13 +53,6 @@
     border-radius: 2px;
   }
 
-  /* PWA standalone: hide address bar artifacts */
-  @media (display-mode: standalone) {
-    body {
-      /* Extra bottom padding for home indicator on iOS */
-      padding-bottom: calc(env(safe-area-inset-bottom) + 4px);
-    }
-  }
 }
 
 @layer components {
