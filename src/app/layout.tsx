@@ -5,6 +5,7 @@ import { Providers } from '@/lib/providers';
 import { AppShell } from '@/components/layout/AppShell';
 import { CookieBanner } from '@/components/layout/CookieBanner';
 import { ServiceWorkerRegistrar } from '@/components/layout/ServiceWorker';
+import { InstallPrompt } from '@/components/layout/InstallPrompt';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
@@ -46,6 +47,7 @@ export default function RootLayout({
         <Providers>
           <AppShell>{children}</AppShell>
           <CookieBanner />
+          <InstallPrompt />
           <ServiceWorkerRegistrar />
         </Providers>
       </body>
