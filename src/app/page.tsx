@@ -383,7 +383,7 @@ export default function DashboardPage() {
         className="fixed bottom-24 right-4 lg:bottom-6 lg:right-6 z-40 flex items-center gap-2 px-5 py-3 rounded-2xl bg-accent-green hover:bg-accent-green/90 text-white font-semibold shadow-lg shadow-accent-green/20 transition-all hover:scale-105"
       >
         <Sparkles size={18} />
-        Gamelles du jour
+        Voir les gamelles du jour
       </Link>
     </div>
   );
