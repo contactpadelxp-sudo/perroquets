@@ -4,17 +4,9 @@ import { useState } from 'react';
 import { RefreshCw, ChevronDown, ChevronUp, Loader2, Leaf, AlertTriangle, Sparkles } from 'lucide-react';
 import { NutrientBar } from '@/components/ui/NutrientBar';
 import { regenerateMealSuggestion } from '@/lib/actions';
+import { useAuth } from '@/lib/auth-context';
+import { getSpeciesConfig } from '@/lib/species';
 import type { DailyMeal, GenerationReason } from '@/types/database';
-
-const NUTRIENT_META: Record<string, { label: string; unit: string; target: number }> = {
-  vitamin_a_ug: { label: 'Vitamine A', unit: 'µg', target: 800 },
-  vitamin_c_mg: { label: 'Vitamine C', unit: 'mg', target: 50 },
-  vitamin_e_mg: { label: 'Vitamine E', unit: 'mg', target: 5 },
-  calcium_mg: { label: 'Calcium', unit: 'mg', target: 150 },
-  iron_mg: { label: 'Fer', unit: 'mg', target: 3 },
-  protein_g: { label: 'Protéines', unit: 'g', target: 12 },
-  fiber_g: { label: 'Fibres', unit: 'g', target: 8 },
-};
 
 interface MealGeneratorProps {
   date: string;
@@ -24,6 +16,13 @@ interface MealGeneratorProps {
 }
 
 export function MealGenerator({ date, recommendedMeals, hasRealMeals, onRegenerated }: MealGeneratorProps) {
+  const { species } = useAuth();
+  const config = getSpeciesConfig(species);
+  const NUTRIENT_META: Record<string, { label: string; unit: string; target: number }> = {};
+  config.nutrients.forEach(n => {
+    NUTRIENT_META[n.key] = { label: n.label, unit: n.unit, target: n.target };
+  });
+
   const [loading, setLoading] = useState(false);
   const [reasonOpen, setReasonOpen] = useState(false);
 

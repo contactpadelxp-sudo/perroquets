@@ -2,6 +2,7 @@
 
 import { createSupabaseServer } from './supabase-server';
 import type { Alert, GenerationReason } from '@/types/database';
+import { getSpeciesConfig, type SpeciesId } from './species';
 
 async function getSupabaseAndUser() {
   const supabase = await createSupabaseServer();
@@ -10,26 +11,28 @@ async function getSupabaseAndUser() {
   return { supabase, userId: user.id };
 }
 
-const TARGETS: Record<string, { target: number; label: string; key: string }> = {
-  vitamin_a_ug: { target: 800, label: 'Vitamine A', key: 'vitamin_a_ug' },
-  vitamin_c_mg: { target: 50, label: 'Vitamine C', key: 'vitamin_c_mg' },
-  vitamin_e_mg: { target: 5, label: 'Vitamine E', key: 'vitamin_e_mg' },
-  calcium_mg: { target: 150, label: 'Calcium', key: 'calcium_mg' },
-  iron_mg: { target: 3, label: 'Fer', key: 'iron_mg' },
-  protein_g: { target: 12, label: 'Protéines', key: 'protein_g' },
-  fiber_g: { target: 8, label: 'Fibres', key: 'fiber_g' },
-};
+async function getUserSpecies(supabase: any, userId: string): Promise<SpeciesId> {
+  const { data } = await supabase
+    .from('user_settings')
+    .select('species')
+    .eq('user_id', userId)
+    .limit(1)
+    .single();
+  return (data?.species as SpeciesId) || 'eclectus';
+}
 
-const CATEGORY_IDS = {
-  fruits: 'a1000000-0000-0000-0000-000000000001',
-  legumes: 'a1000000-0000-0000-0000-000000000002',
-  germinations: 'a1000000-0000-0000-0000-000000000003',
-  cereales: 'a1000000-0000-0000-0000-000000000004',
-  noix: 'a1000000-0000-0000-0000-000000000005',
-  fleurs: 'a1000000-0000-0000-0000-000000000006',
-  complements: 'a1000000-0000-0000-0000-000000000007',
-  interdit: 'a1000000-0000-0000-0000-000000000008',
-};
+function getTargets(species: SpeciesId): Record<string, { target: number; label: string; key: string }> {
+  const config = getSpeciesConfig(species);
+  return {
+    vitamin_a_ug: { target: config.targets.vitamin_a_ug, label: 'Vitamine A', key: 'vitamin_a_ug' },
+    vitamin_c_mg: { target: config.targets.vitamin_c_mg, label: 'Vitamine C', key: 'vitamin_c_mg' },
+    vitamin_e_mg: { target: config.targets.vitamin_e_mg, label: 'Vitamine E', key: 'vitamin_e_mg' },
+    calcium_mg: { target: config.targets.calcium_mg, label: 'Calcium', key: 'calcium_mg' },
+    iron_mg: { target: config.targets.iron_mg, label: 'Fer', key: 'iron_mg' },
+    protein_g: { target: config.targets.protein_g, label: 'Protéines', key: 'protein_g' },
+    fiber_g: { target: config.targets.fiber_g, label: 'Fibres', key: 'fiber_g' },
+  };
+}
 
 const NUTRIENT_KEYS = ['vitamin_a_ug', 'vitamin_c_mg', 'vitamin_e_mg', 'calcium_mg', 'iron_mg', 'protein_g', 'fiber_g'];
 
@@ -39,6 +42,10 @@ const NUTRIENT_KEYS = ['vitamin_a_ug', 'vitamin_c_mg', 'vitamin_e_mg', 'calcium_
 
 export async function calculateDailyNutrition(date: string) {
   const { supabase, userId } = await getSupabaseAndUser();
+  const species = await getUserSpecies(supabase, userId);
+  const config = getSpeciesConfig(species);
+  const TARGETS = getTargets(species);
+  const CATEGORY_IDS = config.categoryIds;
 
   const { data: meals, error: mealsError } = await supabase
     .from('daily_meals')
@@ -59,7 +66,7 @@ export async function calculateDailyNutrition(date: string) {
   NUTRIENT_KEYS.forEach(k => nutrients[k] = 0);
 
   let totalWeight = 0, fruitWeight = 0, vegetableWeight = 0, supplementWeight = 0;
-  let hasBetaCarotene = false, hasSprouts = false;
+  let hasBetaCarotene = false, hasSprouts = false, hasPellets = false;
   const uniqueFoods = new Set<string>();
   const completedMeals = new Set<string>();
 
@@ -70,6 +77,7 @@ export async function calculateDailyNutrition(date: string) {
     uniqueFoods.add(food.id);
     if (food.beta_carotene_rich) hasBetaCarotene = true;
     if (food.category_id === CATEGORY_IDS.germinations) hasSprouts = true;
+    if (CATEGORY_IDS.pellets && food.category_id === CATEGORY_IDS.pellets) hasPellets = true;
     totalWeight += weight;
     if (food.category_id === CATEGORY_IDS.fruits) fruitWeight += weight;
     if (food.category_id === CATEGORY_IDS.legumes) vegetableWeight += weight;
@@ -89,21 +97,81 @@ export async function calculateDailyNutrition(date: string) {
   const supplementsPct = totalWeight > 0 ? Math.round((supplementWeight / totalWeight) * 100) : 0;
 
   const alerts: Alert[] = [];
-  if (!hasBetaCarotene) alerts.push({ type: 'danger', message: 'Aucun bêta-carotène dans la journée', icon: '🔴' });
 
-  const twoDaysAgo = new Date(date);
-  twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-  const { data: recentSprouts } = await supabase
-    .from('daily_meals').select('meal_items(food:foods(category_id))')
-    .eq('user_id', userId)
-    .gte('meal_date', twoDaysAgo.toISOString().split('T')[0])
-    .lte('meal_date', date);
-  let sproutsFound = false;
-  recentSprouts?.forEach((m: any) => m.meal_items?.forEach((i: any) => {
-    if (i.food?.category_id === CATEGORY_IDS.germinations) sproutsFound = true;
-  }));
-  if (!sproutsFound) alerts.push({ type: 'danger', message: 'Germinations absentes depuis > 2 jours', icon: '🔴' });
+  // Beta-carotene alert
+  if (!hasBetaCarotene && totalWeight > 0) {
+    if (species === 'african_grey') {
+      alerts.push({ type: 'danger', message: 'Carotte ou patate douce obligatoire aujourd\'hui', icon: '🔴' });
+    } else if (species === 'galah') {
+      alerts.push({ type: 'danger', message: 'Carotte ou poivron rouge obligatoire aujourd\'hui', icon: '🔴' });
+    } else {
+      alerts.push({ type: 'danger', message: 'Aucun bêta-carotène dans la journée', icon: '🔴' });
+    }
+  }
 
+  // Eclectus: sprouts check
+  if (species === 'eclectus') {
+    const twoDaysAgo = new Date(date);
+    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+    const { data: recentSprouts } = await supabase
+      .from('daily_meals').select('meal_items(food:foods(category_id))')
+      .eq('user_id', userId)
+      .gte('meal_date', twoDaysAgo.toISOString().split('T')[0])
+      .lte('meal_date', date);
+    let sproutsFound = false;
+    recentSprouts?.forEach((m: any) => m.meal_items?.forEach((i: any) => {
+      if (i.food?.category_id === CATEGORY_IDS.germinations) sproutsFound = true;
+    }));
+    if (!sproutsFound) alerts.push({ type: 'danger', message: 'Germinations absentes depuis > 2 jours', icon: '🔴' });
+  }
+
+  // African Grey specific alerts
+  if (species === 'african_grey' && totalWeight > 0) {
+    const calciumPct = TARGETS.calcium_mg.target > 0 ? (nutrients.calcium_mg / TARGETS.calcium_mg.target) * 100 : 0;
+    if (calciumPct < 50) {
+      alerts.push({ type: 'danger', message: '⚠️ CRITIQUE : Gris très sensible à l\'hypocalcémie', icon: '🔴' });
+    }
+    const ironPct = TARGETS.iron_mg.target > 0 ? (nutrients.iron_mg / TARGETS.iron_mg.target) * 100 : 0;
+    if (ironPct > 150) {
+      alerts.push({ type: 'warning', message: '⚠️ Iron Storage Disease : réduire aliments riches en fer', icon: '🟠' });
+    }
+    if (!hasPellets) {
+      alerts.push({ type: 'warning', message: 'Les pellets doivent constituer 70% du régime', icon: '🟡' });
+    }
+  }
+
+  // Galah-specific alerts
+  if (species === 'galah' && totalWeight > 0) {
+    // Fat excess
+    let totalFat = 0;
+    allItems.forEach((item) => {
+      const weight = item.weight_grams || (item.quantity_tbsp || 0) * 15;
+      totalFat += (item.food.fat_g || 0) * (weight / 100);
+    });
+    if (config.targets.fat_max_g && totalFat > config.targets.fat_max_g) {
+      alerts.push({ type: 'warning', message: 'Trop de lipides — réduire noix et graines grasses immédiatement', icon: '🟠' });
+    }
+
+    // Sunflower/carthame (danger_level >= 2 in graines/céréales category)
+    const hasFattySeeds = allItems.some((item) =>
+      item.food.danger_level >= 2 && item.food.category_id === CATEGORY_IDS.cereales
+    );
+    if (hasFattySeeds) {
+      alerts.push({ type: 'danger', message: '⚠️ Graines grasses détectées : cause directe de lipomatose chez le Rosalbin', icon: '🔴' });
+    }
+
+    // Fruit excess
+    if (fruitsPct > 5) {
+      alerts.push({ type: 'warning', message: `Fruits trop présents pour le Rosalbin (${fruitsPct}% — max 5%)`, icon: '🟡' });
+    }
+
+    // No pellets
+    if (!hasPellets) {
+      alerts.push({ type: 'warning', message: 'Pellets low-fat indispensables — 70% du régime', icon: '🟡' });
+    }
+  }
+
+  // Common: forbidden / seed checks
   allItems.forEach((item) => {
     if (item.food.remove_seed && item.seed_removed !== true)
       alerts.push({ type: 'danger', message: `Noyau non confirmé comme retiré : ${item.food.name}`, icon: '🔴' });
@@ -111,6 +179,7 @@ export async function calculateDailyNutrition(date: string) {
       alerts.push({ type: 'danger', message: `Aliment interdit détecté : ${item.food.name}`, icon: '🔴' });
   });
 
+  // Weekly limits check
   const weekStart = new Date(date);
   weekStart.setDate(weekStart.getDate() - 7);
   const { data: weekMeals } = await supabase
@@ -125,21 +194,30 @@ export async function calculateDailyNutrition(date: string) {
   if (nutCount > 2 || cerealCount > 2)
     alerts.push({ type: 'warning', message: 'Noix/céréales > 2x cette semaine', icon: '🟡' });
 
+  // Fruit/veg ratio (eclectus specific)
   const fruitVegPct = fruitsPct + vegetablesPct;
-  if (fruitVegPct > 0 && (fruitVegPct < 60 || fruitVegPct > 85))
+  if (species === 'eclectus' && fruitVegPct > 0 && (fruitVegPct < 60 || fruitVegPct > 85))
     alerts.push({ type: 'warning', message: `Ratio fruits+légumes déséquilibré (${fruitVegPct}%)`, icon: '🟡' });
 
   const vitAPercent = TARGETS.vitamin_a_ug.target > 0 ? (nutrients.vitamin_a_ug / TARGETS.vitamin_a_ug.target) * 100 : 0;
-  if (vitAPercent < 50)
+  if (vitAPercent < 50 && totalWeight > 0)
     alerts.push({ type: 'warning', message: `Vitamine A < 50% de l'objectif (${Math.round(vitAPercent)}%)`, icon: '🟠' });
 
+  // Score - species aware
   let score = 0;
-  if (fruitVegPct >= 60) score += 20;
-  if (hasBetaCarotene) score += 20;
-  if (hasSprouts) score += 20;
-  if (vitAPercent >= 70) score += 20;
-  if (uniqueFoods.size >= 5) score += 10;
-  if (completedMeals.size >= 3) score += 10;
+  const sc = config.scoreConfig;
+  if (species === 'african_grey' || species === 'galah') {
+    if (hasPellets) score += (sc.pelletsPoints ?? 25);
+    if (fruitVegPct >= sc.fruitVegMin) score += 10;
+  } else {
+    if (fruitVegPct >= sc.fruitVegMin) score += 20;
+  }
+  if (hasBetaCarotene) score += sc.betaCarotenePoints;
+  if (hasSprouts) score += sc.sproutsPoints;
+  if (vitAPercent >= 70) score += sc.vitAPoints;
+  if (uniqueFoods.size >= sc.diversityMinFoods) score += sc.diversityPoints;
+  if (completedMeals.size >= 3) score += sc.completedMealsPoints;
+  score = Math.min(score, 100);
 
   const summary = {
     summary_date: date, user_id: userId,
@@ -150,8 +228,13 @@ export async function calculateDailyNutrition(date: string) {
     actual_iron_mg: Math.round(nutrients.iron_mg * 10) / 10,
     actual_protein_g: Math.round(nutrients.protein_g * 10) / 10,
     actual_fiber_g: Math.round(nutrients.fiber_g * 10) / 10,
-    target_vitamin_a_ug: 800, target_vitamin_c_mg: 50, target_vitamin_e_mg: 5,
-    target_calcium_mg: 150, target_iron_mg: 3, target_protein_g: 12, target_fiber_g: 8,
+    target_vitamin_a_ug: TARGETS.vitamin_a_ug.target,
+    target_vitamin_c_mg: TARGETS.vitamin_c_mg.target,
+    target_vitamin_e_mg: TARGETS.vitamin_e_mg.target,
+    target_calcium_mg: TARGETS.calcium_mg.target,
+    target_iron_mg: TARGETS.iron_mg.target,
+    target_protein_g: TARGETS.protein_g.target,
+    target_fiber_g: TARGETS.fiber_g.target,
     fruits_pct: fruitsPct, vegetables_pct: vegetablesPct, supplements_pct: supplementsPct,
     balance_score: score, has_beta_carotene: hasBetaCarotene, has_sprouts: hasSprouts, alerts,
   };
@@ -194,10 +277,10 @@ function addNutrients(a: Record<string, number>, b: Record<string, number>): Rec
   return r;
 }
 
-function computeNutritionScore(nutrients: Record<string, number>): number {
+function computeNutritionScore(nutrients: Record<string, number>, targets: Record<string, { target: number }>): number {
   let totalPct = 0;
   NUTRIENT_KEYS.forEach(k => {
-    const target = TARGETS[k]?.target || 1;
+    const target = targets[k]?.target || 1;
     totalPct += Math.min((nutrients[k] || 0) / target, 1) * 100;
   });
   return Math.round(totalPct / NUTRIENT_KEYS.length);
@@ -209,6 +292,10 @@ function computeNutritionScore(nutrients: Record<string, number>): number {
 
 export async function generateDailyMealSuggestion(date: string) {
   const { supabase, userId } = await getSupabaseAndUser();
+  const species = await getUserSpecies(supabase, userId);
+  const config = getSpeciesConfig(species);
+  const TARGETS = getTargets(species);
+  const CATEGORY_IDS = config.categoryIds;
   const currentMonth = new Date(date).getMonth() + 1;
 
   // Check if already generated today
@@ -274,11 +361,12 @@ export async function generateDailyMealSuggestion(date: string) {
     });
   }
 
-  // ── STEP 3: Get all safe foods with seasonality info ──
+  // ── STEP 3: Get all safe foods with seasonality info (species-filtered) ──
   const { data: allFoods } = await supabase
     .from('foods')
     .select('*, category:food_categories(*)')
     .eq('is_forbidden', false)
+    .eq('species', species)
     .order('name');
 
   if (!allFoods || allFoods.length === 0) return null;
@@ -397,7 +485,7 @@ export async function generateDailyMealSuggestion(date: string) {
 
   // ── STEP 5: Verification & forced additions ──
   const forced: string[] = [];
-  const vitAPct = (cumulativeNutrients.vitamin_a_ug / 800) * 100;
+  const vitAPct = (cumulativeNutrients.vitamin_a_ug / TARGETS.vitamin_a_ug.target) * 100;
   if (vitAPct < 60) {
     const carrot = allFoods.find((f: any) => f.name === 'Carotte');
     if (carrot && !Object.values(mealPlan).flat().find(i => i.food.id === carrot.id)) {
@@ -406,13 +494,13 @@ export async function generateDailyMealSuggestion(date: string) {
       forced.push('Carotte (Vit A < 60%)');
     }
   }
-  const protPct = (cumulativeNutrients.protein_g / 12) * 100;
+  const protPct = (cumulativeNutrients.protein_g / TARGETS.protein_g.target) * 100;
   if (protPct < 50 && sprouts) {
     mealPlan.midi.push({ food: sprouts, quantity_tbsp: 1 });
     cumulativeNutrients = addNutrients(cumulativeNutrients, computeNutrients(sprouts, 1));
     forced.push('Germinations supplémentaires (protéines < 50%)');
   }
-  const fiberPct = (cumulativeNutrients.fiber_g / 8) * 100;
+  const fiberPct = (cumulativeNutrients.fiber_g / TARGETS.fiber_g.target) * 100;
   if (fiberPct < 50) {
     const brocoli = allFoods.find((f: any) => f.name === 'Brocoli');
     if (brocoli && !Object.values(mealPlan).flat().find(i => i.food.id === brocoli.id)) {
@@ -457,7 +545,7 @@ export async function generateDailyMealSuggestion(date: string) {
     explanation_lines: explanationLines,
   };
 
-  const nutritionScore = computeNutritionScore(cumulativeNutrients);
+  const nutritionScore = computeNutritionScore(cumulativeNutrients, TARGETS);
 
   return {
     alreadyGenerated: false,

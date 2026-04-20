@@ -4,17 +4,9 @@ import { ChevronDown, ChevronUp, Lightbulb } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { NutrientBar } from '@/components/ui/NutrientBar';
 import { calculateNutritionFromMeals } from '@/lib/nutrition';
+import { useAuth } from '@/lib/auth-context';
+import { getSpeciesConfig } from '@/lib/species';
 import type { DailyMeal } from '@/types/database';
-
-const NUTRIENTS = [
-  { key: 'vitamin_a_ug', label: 'Vitamine A', unit: 'µg', target: 800, critical: true, suggestions: 'Carotte, patate douce, mangue, potiron, poivron rouge' },
-  { key: 'vitamin_c_mg', label: 'Vitamine C', unit: 'mg', target: 50, critical: false, suggestions: 'Goyave, poivron rouge, kiwi, piment, brocoli' },
-  { key: 'vitamin_e_mg', label: 'Vitamine E', unit: 'mg', target: 5, critical: false, suggestions: 'Graines tournesol germées, pissenlit, épinards' },
-  { key: 'calcium_mg', label: 'Calcium', unit: 'mg', target: 150, critical: false, suggestions: 'Brocoli, pissenlit, basilic, pois mange-tout' },
-  { key: 'iron_mg', label: 'Fer', unit: 'mg', target: 3, critical: false, suggestions: 'Lentilles cuites, épinards, piment, pissenlit' },
-  { key: 'protein_g', label: 'Protéines', unit: 'g', target: 12, critical: false, suggestions: 'Germinations, lentilles cuites, pois chiches, quinoa' },
-  { key: 'fiber_g', label: 'Fibres', unit: 'g', target: 8, critical: false, suggestions: 'Pois chiches, lentilles, goyave, grenade, poire' },
-];
 
 interface NutritionPanelProps {
   meals: DailyMeal[];
@@ -22,13 +14,22 @@ interface NutritionPanelProps {
 
 export function NutritionPanel({ meals }: NutritionPanelProps) {
   const [isOpen, setIsOpen] = useState(true);
+  const { species } = useAuth();
+  const config = getSpeciesConfig(species);
 
-  const summary = useMemo(() => calculateNutritionFromMeals(meals), [meals]);
+  const NUTRIENTS = config.nutrients;
+
+  const summary = useMemo(() => calculateNutritionFromMeals(meals, species), [meals, species]);
 
   const deficiencies = NUTRIENTS.filter((n) => {
     const actual = summary.nutrients[n.key] ?? 0;
     return (actual / n.target) * 100 < 70;
   });
+
+  // Iron excess warning for African Grey
+  const ironExcess = species === 'african_grey' && NUTRIENTS.find(n => n.key === 'iron_mg' && n.maxWarning)
+    ? (summary.nutrients.iron_mg ?? 0) > (config.targets.iron_mg * 1.5)
+    : false;
 
   const hasAnyFood = summary.uniqueFoodCount > 0;
 
@@ -41,7 +42,7 @@ export function NutritionPanel({ meals }: NutritionPanelProps) {
         <div className="flex items-center gap-3">
           <span className="font-semibold text-sm">📊 Bilan nutritionnel du jour</span>
           {hasAnyFood && (
-            <span className="text-xs text-accent-violet font-medium">
+            <span className="text-xs font-medium" style={{ color: config.accentColor }}>
               Score : {summary.balanceScore}%
             </span>
           )}
@@ -57,7 +58,15 @@ export function NutritionPanel({ meals }: NutritionPanelProps) {
             </p>
           ) : (
             <>
-              {/* Nutrient bars — based on actually eaten foods only */}
+              {/* Iron excess warning */}
+              {ironExcess && (
+                <div className="bg-warning/10 border border-warning/30 rounded-2xl p-3 text-sm text-warning flex items-start gap-2">
+                  <span className="shrink-0">🟠</span>
+                  <span>⚠️ Iron Storage Disease : apport en fer trop élevé — réduire lentilles, épinards et aliments riches en fer</span>
+                </div>
+              )}
+
+              {/* Nutrient bars */}
               <div className="space-y-3">
                 {NUTRIENTS.map((n) => (
                   <NutrientBar

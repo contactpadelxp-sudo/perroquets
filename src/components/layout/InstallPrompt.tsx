@@ -15,7 +15,7 @@ export function InstallPrompt() {
 
   useEffect(() => {
     // Check if already dismissed
-    if (localStorage.getItem('eclectuscare-install-dismissed')) {
+    if (localStorage.getItem('parrotcare-install-dismissed')) {
       setDismissed(true);
       return;
     }
@@ -57,7 +57,7 @@ export function InstallPrompt() {
     setDismissed(true);
     setDeferredPrompt(null);
     setShowIOSPrompt(false);
-    localStorage.setItem('eclectuscare-install-dismissed', 'true');
+    localStorage.setItem('parrotcare-install-dismissed', 'true');
   };
 
   if (dismissed) return null;
@@ -71,7 +71,7 @@ export function InstallPrompt() {
             <Download size={18} className="text-accent-violet" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold">Installer Eclectuscare</p>
+            <p className="text-sm font-semibold">Installer ParrotCare</p>
             <p className="text-xs text-muted mt-0.5">
               Accédez rapidement depuis votre écran d&apos;accueil
             </p>
@@ -107,7 +107,7 @@ export function InstallPrompt() {
             <Share size={18} className="text-accent-violet" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold">Installer Eclectuscare</p>
+            <p className="text-sm font-semibold">Installer ParrotCare</p>
             <p className="text-xs text-muted mt-1 leading-relaxed">
               Appuyez sur <Share size={12} className="inline text-accent-violet" /> puis
               <strong> Sur l&apos;écran d&apos;accueil</strong> pour installer l&apos;app.

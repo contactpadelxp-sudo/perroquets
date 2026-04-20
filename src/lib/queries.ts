@@ -12,21 +12,25 @@ import type {
 } from '@/types/database';
 
 // ── Food Categories ──
-export async function getFoodCategories(): Promise<FoodCategory[]> {
-  const { data, error } = await supabase
+export async function getFoodCategories(species?: string): Promise<FoodCategory[]> {
+  let query = supabase
     .from('food_categories')
     .select('*')
     .order('name');
+  if (species) query = query.eq('species', species);
+  const { data, error } = await query;
   if (error) throw error;
   return data ?? [];
 }
 
 // ── Foods ──
-export async function getFoods(): Promise<Food[]> {
-  const { data, error } = await supabase
+export async function getFoods(species?: string): Promise<Food[]> {
+  let query = supabase
     .from('foods')
     .select('*, category:food_categories(*)')
     .order('name');
+  if (species) query = query.eq('species', species);
+  const { data, error } = await query;
   if (error) throw error;
   return data ?? [];
 }
@@ -41,12 +45,14 @@ export async function getFoodsByCategory(categoryId: string): Promise<Food[]> {
   return data ?? [];
 }
 
-export async function getSafeFoods(): Promise<Food[]> {
-  const { data, error } = await supabase
+export async function getSafeFoods(species?: string): Promise<Food[]> {
+  let query = supabase
     .from('foods')
     .select('*, category:food_categories(*)')
     .eq('is_forbidden', false)
     .order('name');
+  if (species) query = query.eq('species', species);
+  const { data, error } = await query;
   if (error) throw error;
   return data ?? [];
 }
@@ -200,11 +206,13 @@ export async function deleteWeightLog(id: string): Promise<void> {
 }
 
 // ── Bio Calendar ──
-export async function getBioCalendarEvents(): Promise<BioCalendarEvent[]> {
-  const { data, error } = await supabase
+export async function getBioCalendarEvents(species?: string): Promise<BioCalendarEvent[]> {
+  let query = supabase
     .from('bio_calendar_events')
     .select('*')
     .order('recurrence_month_start');
+  if (species) query = query.eq('species', species);
+  const { data, error } = await query;
   if (error) throw error;
   return data ?? [];
 }

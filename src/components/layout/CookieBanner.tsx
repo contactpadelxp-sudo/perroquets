@@ -8,12 +8,12 @@ export function CookieBanner() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    const accepted = localStorage.getItem('eclectuscare-cookies-accepted');
+    const accepted = localStorage.getItem('parrotcare-cookies-accepted');
     if (!accepted) setVisible(true);
   }, []);
 
   const handleAccept = () => {
-    localStorage.setItem('eclectuscare-cookies-accepted', 'true');
+    localStorage.setItem('parrotcare-cookies-accepted', 'true');
     setVisible(false);
   };
 

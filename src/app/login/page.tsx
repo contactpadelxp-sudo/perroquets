@@ -100,7 +100,15 @@ function LoginContent() {
           password,
         });
         if (!loginError) {
-          router.push('/');
+          // New user: create settings and go to onboarding
+          const { data: { user: newUser } } = await supabase.auth.getUser();
+          if (newUser) {
+            await supabase.from('user_settings').insert({
+              user_id: newUser.id,
+              bird_name: 'Mon oiseau',
+            }).select().single();
+          }
+          router.push('/onboarding');
           router.refresh();
         } else {
           setSuccess('Compte créé ! Un email de confirmation a été envoyé. Vérifiez votre boîte de réception.');
@@ -131,9 +139,9 @@ function LoginContent() {
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-accent-violet/10 mb-2">
             <span className="text-5xl">🦜</span>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight">Eclectuscare</h1>
+          <h1 className="text-3xl font-bold tracking-tight">ParrotCare</h1>
           <p className="text-muted text-sm">
-            Suivi quotidien pour votre Éclectus roratus
+            Suivi quotidien pour votre perroquet de compagnie
           </p>
         </div>
 
@@ -305,7 +313,7 @@ function LoginContent() {
         {/* Footer */}
         <div className="text-center space-y-1">
           <p className="text-xs text-muted">
-            Conçu avec soin pour les Éclectus roratus
+            Conçu avec soin pour vos perroquets de compagnie
           </p>
           <Link
             href="/legal"

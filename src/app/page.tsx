@@ -25,46 +25,47 @@ import {
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import { getActiveEventsForMonth } from '@/lib/queries';
+import { getSpeciesConfig } from '@/lib/species';
 import type {
   DailyNutritionSummary,
   WeightLog,
   BioCalendarEvent,
-  UserSettings,
 } from '@/types/database';
 import { cn, getWeightStatus, getNutrientColor } from '@/lib/utils';
 
-const NUTRIENT_TARGETS: Record<string, { label: string; target: number; unit: string; suggestions: string }> = {
-  actual_vitamin_a_ug: { label: 'Vitamine A', target: 800, unit: 'µg', suggestions: 'Carotte, patate douce, mangue' },
-  actual_vitamin_c_mg: { label: 'Vitamine C', target: 50, unit: 'mg', suggestions: 'Goyave, poivron rouge, kiwi' },
-  actual_vitamin_e_mg: { label: 'Vitamine E', target: 5, unit: 'mg', suggestions: 'Graines tournesol germées, pissenlit' },
-  actual_calcium_mg: { label: 'Calcium', target: 150, unit: 'mg', suggestions: 'Brocoli, pissenlit, basilic' },
-  actual_iron_mg: { label: 'Fer', target: 3, unit: 'mg', suggestions: 'Lentilles, épinards, piment' },
-  actual_protein_g: { label: 'Protéines', target: 12, unit: 'g', suggestions: 'Germinations, lentilles, quinoa' },
-  actual_fiber_g: { label: 'Fibres', target: 8, unit: 'g', suggestions: 'Pois chiches, goyave, grenade' },
-};
-
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, species, settings } = useAuth();
+  const config = getSpeciesConfig(species);
+
   const [summary, setSummary] = useState<DailyNutritionSummary | null>(null);
   const [latestWeight, setLatestWeight] = useState<WeightLog | null>(null);
   const [previousWeight, setPreviousWeight] = useState<WeightLog | null>(null);
   const [events, setEvents] = useState<BioCalendarEvent[]>([]);
-  const [settings, setSettings] = useState<UserSettings | null>(null);
   const [vitAHistory, setVitAHistory] = useState<{ date: string; value: number }[]>([]);
   const [weightHistory, setWeightHistory] = useState<{ date: string; value: number }[]>([]);
   const [todayMealCount, setTodayMealCount] = useState(0);
 
   const today = format(new Date(), 'yyyy-MM-dd');
 
+  // Build nutrient targets from species config
+  const NUTRIENT_TARGETS: Record<string, { label: string; target: number; unit: string; suggestions: string }> = {};
+  config.nutrients.forEach(n => {
+    NUTRIENT_TARGETS[`actual_${n.key}`] = {
+      label: n.label,
+      target: n.target,
+      unit: n.unit,
+      suggestions: n.suggestions,
+    };
+  });
+
   useEffect(() => {
     if (!user) return;
     const loadAll = async () => {
-      const [summaryRes, weightsRes, eventsRes, settingsRes, nutritionHistRes, mealsRes] =
+      const [summaryRes, weightsRes, eventsRes, nutritionHistRes, mealsRes] =
         await Promise.all([
           supabase.from('daily_nutrition_summary').select('*').eq('summary_date', today).eq('user_id', user.id).single(),
           supabase.from('weight_logs').select('*').eq('user_id', user.id).order('weigh_date', { ascending: false }).limit(2),
-          supabase.from('bio_calendar_events').select('*'),
-          supabase.from('user_settings').select('*').eq('user_id', user.id).limit(1).single(),
+          supabase.from('bio_calendar_events').select('*').eq('species', species),
           supabase
             .from('daily_nutrition_summary')
             .select('summary_date, actual_vitamin_a_ug')
@@ -82,7 +83,6 @@ export default function DashboardPage() {
       if (weightsRes.data?.[0]) setLatestWeight(weightsRes.data[0]);
       if (weightsRes.data?.[1]) setPreviousWeight(weightsRes.data[1]);
       setEvents(eventsRes.data ?? []);
-      setSettings(settingsRes.data);
 
       setVitAHistory(
         (nutritionHistRes.data ?? []).reverse().map((d: any) => ({
@@ -105,9 +105,11 @@ export default function DashboardPage() {
         }))
       );
 
-      // Count distinct meal_times that have at least one actually_eaten item
+      // Count distinct meal_times with at least one actually_eaten item
+      // Only count real (non-recommended) meals to reflect actual feeding
       const mealsWithFood = new Set<string>();
       mealsRes.data?.forEach((m: any) => {
+        if (m.is_recommended) return; // skip auto-generated suggestions
         const hasEaten = m.meal_items?.some((i: any) => i.actually_eaten);
         if (hasEaten) mealsWithFood.add(m.meal_time);
       });
@@ -115,7 +117,7 @@ export default function DashboardPage() {
     };
 
     loadAll();
-  }, [today, user]);
+  }, [today, user, species]);
 
   const currentMonth = getMonth(new Date()) + 1;
   const activeEvents = getActiveEventsForMonth(events, currentMonth);
@@ -150,8 +152,8 @@ export default function DashboardPage() {
   const weightStatus = latestWeight
     ? getWeightStatus(
         Number(latestWeight.weight_grams),
-        settings?.weight_min_grams ?? 380,
-        settings?.weight_max_grams ?? 550
+        settings?.weight_min_grams ?? config.weight.defaultMin,
+        settings?.weight_max_grams ?? config.weight.defaultMax
       )
     : null;
 
@@ -167,18 +169,34 @@ export default function DashboardPage() {
     <div className="space-y-6 max-w-4xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <div className="w-14 h-14 rounded-2xl bg-accent-violet/10 flex items-center justify-center text-3xl">
-          🦜
+        <div
+          className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
+          style={{ backgroundColor: config.accentColor + '15' }}
+        >
+          {config.emoji}
         </div>
         <div>
-          <h1 className="text-2xl font-bold">{settings?.bird_name ?? 'Mon Éclectus'}</h1>
+          <h1 className="text-2xl font-bold">{settings?.bird_name ?? config.name}</h1>
           <p className="text-sm text-muted">
             {settings?.bird_birth_date
               ? `${Math.floor(differenceInDays(new Date(), new Date(settings.bird_birth_date)) / 365)} ans`
-              : 'Éclectus roratus femelle'}
+              : `${config.scientificName}`}
           </p>
         </div>
       </div>
+
+      {/* Diet info card for African Grey */}
+      {config.dietInfoCard && (
+        <div className="card-static p-4 border-warning/30">
+          <div className="flex items-start gap-3">
+            <span className="text-xl shrink-0">{config.dietInfoCard.icon}</span>
+            <div>
+              <p className="text-sm font-semibold text-warning">{config.dietInfoCard.title}</p>
+              <p className="text-xs text-muted mt-1">{config.dietInfoCard.message}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 4 stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -295,7 +313,7 @@ export default function DashboardPage() {
       {nextEvent && (
         <div className="card-static p-4 flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl"
-            style={{ backgroundColor: (nextEvent.event.color ?? '#A855F7') + '15' }}>
+            style={{ backgroundColor: (nextEvent.event.color ?? config.accentColor) + '15' }}>
             {nextEvent.event.icon}
           </div>
           <div className="flex-1">
@@ -306,7 +324,7 @@ export default function DashboardPage() {
             <p className="text-sm font-semibold">{nextEvent.event.title}</p>
           </div>
           <div className="text-right">
-            <p className="text-2xl font-bold text-accent-violet">{nextEvent.daysUntil}</p>
+            <p className="text-2xl font-bold" style={{ color: config.accentColor }}>{nextEvent.daysUntil}</p>
             <p className="text-xs text-muted">jours</p>
           </div>
         </div>
@@ -364,7 +382,7 @@ export default function DashboardPage() {
                   <Line
                     type="monotone"
                     dataKey="value"
-                    stroke="#A855F7"
+                    stroke={config.accentColor}
                     strokeWidth={2}
                     dot={{ r: 2 }}
                   />

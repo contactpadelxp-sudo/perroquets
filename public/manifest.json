@@ -1,7 +1,7 @@
 {
-  "name": "Eclectuscare",
-  "short_name": "Eclectuscare",
-  "description": "Suivi quotidien pour votre Éclectus roratus",
+  "name": "ParrotCare",
+  "short_name": "ParrotCare",
+  "description": "Suivi quotidien pour votre perroquet de compagnie",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0F0F11",

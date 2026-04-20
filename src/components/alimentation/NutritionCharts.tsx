@@ -15,10 +15,12 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
+import { getSpeciesConfig } from '@/lib/species';
 import type { DailyNutritionSummary } from '@/types/database';
 
 export function NutritionCharts() {
-  const { user } = useAuth();
+  const { user, species } = useAuth();
+  const config = getSpeciesConfig(species);
   const [data, setData] = useState<DailyNutritionSummary[]>([]);
 
   useEffect(() => {
@@ -74,10 +76,10 @@ export function NutritionCharts() {
                 }}
               />
               <ReferenceLine
-                y={800}
+                y={config.targets.vitamin_a_ug}
                 stroke="#22C55E"
                 strokeDasharray="5 5"
-                label={{ value: 'Objectif 800µg', fill: '#22C55E', fontSize: 10 }}
+                label={{ value: `Objectif ${config.targets.vitamin_a_ug}µg`, fill: '#22C55E', fontSize: 10 }}
               />
               <Line
                 type="monotone"

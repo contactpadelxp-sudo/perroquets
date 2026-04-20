@@ -26,7 +26,7 @@ const MEAL_LABELS: Record<string, string> = {
 };
 
 export default function AlimentationPage() {
-  const { user } = useAuth();
+  const { user, species } = useAuth();
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [meals, setMeals] = useState<DailyMeal[]>([]);
   const [foods, setFoods] = useState<Food[]>([]);
@@ -45,7 +45,7 @@ export default function AlimentationPage() {
   const registeredMeals = useMemo(() => meals.filter(m => !m.is_recommended), [meals]);
 
   // Nutrition from REGISTERED meals only
-  const nutrition = useMemo(() => calculateNutritionFromMeals(registeredMeals), [registeredMeals]);
+  const nutrition = useMemo(() => calculateNutritionFromMeals(registeredMeals, species), [registeredMeals, species]);
 
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -60,12 +60,12 @@ export default function AlimentationPage() {
 
   const loadFoods = useCallback(async () => {
     const [foodsRes, catsRes] = await Promise.all([
-      supabase.from('foods').select('*, category:food_categories(*)').order('name'),
-      supabase.from('food_categories').select('*').order('name'),
+      supabase.from('foods').select('*, category:food_categories(*)').eq('species', species).order('name'),
+      supabase.from('food_categories').select('*').eq('species', species).order('name'),
     ]);
     setFoods(foodsRes.data ?? []);
     setCategories(catsRes.data ?? []);
-  }, []);
+  }, [species]);
 
   useEffect(() => {
     const currentMonth = new Date().getMonth() + 1;

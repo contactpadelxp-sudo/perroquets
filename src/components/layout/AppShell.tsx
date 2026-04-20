@@ -8,8 +8,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isAuthPage = pathname.startsWith('/login') || pathname.startsWith('/auth');
   const isLegalPage = pathname.startsWith('/legal');
+  const isOnboarding = pathname.startsWith('/onboarding');
 
-  if (isAuthPage || isLegalPage) {
+  if (isAuthPage || isLegalPage || isOnboarding) {
     return <>{children}</>;
   }
 

@@ -39,19 +39,28 @@ export default function AuthCallbackPage() {
       const { data: { user } } = await supabase.auth.getUser();
 
       if (user) {
-        // Ensure user_settings exists
+        // Check if user_settings exists (determines if new user)
         try {
           const { data: existing } = await supabase
             .from('user_settings')
-            .select('id')
+            .select('id, species')
             .eq('user_id', user.id)
             .single();
 
           if (!existing) {
+            // New user: create minimal settings and redirect to onboarding
             await supabase.from('user_settings').insert({
               user_id: user.id,
-              bird_name: 'Mon Éclectus',
+              bird_name: 'Mon oiseau',
             });
+            window.location.href = '/onboarding';
+            return;
+          }
+
+          if (!existing.species) {
+            // Existing user without species: redirect to onboarding
+            window.location.href = '/onboarding';
+            return;
           }
         } catch {
           // Non-critical

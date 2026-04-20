@@ -10,14 +10,14 @@ import { InstallPrompt } from '@/components/layout/InstallPrompt';
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 export const metadata: Metadata = {
-  title: 'Eclectuscare — Suivi quotidien Éclectus',
+  title: 'ParrotCare — Suivi quotidien perroquet',
   description:
-    'Application de suivi quotidien pour perroquet Éclectus roratus : alimentation, poids, calendrier biologique.',
+    'Application de suivi quotidien pour perroquet de compagnie : alimentation, poids, calendrier biologique.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Eclectuscare',
+    title: 'ParrotCare',
   },
   formatDetection: {
     telephone: false,

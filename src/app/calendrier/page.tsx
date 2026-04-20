@@ -15,11 +15,13 @@ import {
 import { fr } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, X, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth-context';
 import { getActiveEventsForMonth } from '@/lib/queries';
 import type { BioCalendarEvent } from '@/types/database';
 import { cn } from '@/lib/utils';
 
 export default function CalendrierPage() {
+  const { species } = useAuth();
   const [month, setMonth] = useState(new Date());
   const [events, setEvents] = useState<BioCalendarEvent[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<BioCalendarEvent | null>(null);
@@ -28,9 +30,10 @@ export default function CalendrierPage() {
     supabase
       .from('bio_calendar_events')
       .select('*')
+      .eq('species', species)
       .order('recurrence_month_start')
       .then(({ data }) => setEvents(data ?? []));
-  }, []);
+  }, [species]);
 
   const currentMonth = getMonth(month) + 1; // 1-12
   const activeEvents = getActiveEventsForMonth(events, currentMonth);

@@ -15,15 +15,18 @@ import {
   Trash2,
   AlertTriangle,
   Shield,
+  LogOut,
 } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
+import { getSpeciesConfig } from '@/lib/species';
 import type { UserSettings } from '@/types/database';
 import { cn } from '@/lib/utils';
 
 export default function ParametresPage() {
-  const { user } = useAuth();
+  const { user, species, signOut } = useAuth();
+  const speciesConfig = getSpeciesConfig(species);
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -34,8 +37,8 @@ export default function ParametresPage() {
   // Form state
   const [birdName, setBirdName] = useState('');
   const [birthDate, setBirthDate] = useState('');
-  const [weightMin, setWeightMin] = useState(380);
-  const [weightMax, setWeightMax] = useState(550);
+  const [weightMin, setWeightMin] = useState(speciesConfig.weight.defaultMin);
+  const [weightMax, setWeightMax] = useState(speciesConfig.weight.defaultMax);
   const [mealMorning, setMealMorning] = useState('08:00');
   const [mealNoon, setMealNoon] = useState('12:00');
   const [mealEvening, setMealEvening] = useState('18:00');
@@ -138,7 +141,7 @@ export default function ParametresPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `eclectuscare-export-${format(new Date(), 'yyyy-MM-dd')}.${extension}`;
+      a.download = `parrotcare-export-${format(new Date(), 'yyyy-MM-dd')}.${extension}`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success(`Export ${exportFormat.toUpperCase()} téléchargé !`);
@@ -199,9 +202,9 @@ export default function ParametresPage() {
         </div>
 
         <div>
-          <label className="text-xs text-muted block mb-1">Sexe</label>
+          <label className="text-xs text-muted block mb-1">Espèce</label>
           <div className="px-3 py-2.5 rounded-xl bg-background border border-border text-sm text-muted">
-            Femelle (Éclectus roratus)
+            {speciesConfig.name} ({speciesConfig.scientificName})
           </div>
         </div>
       </div>
@@ -387,6 +390,15 @@ export default function ParametresPage() {
           </button>
         </div>
       </div>
+
+      {/* Logout */}
+      <button
+        onClick={signOut}
+        className="w-full py-3 rounded-xl border border-border hover:bg-white/5 text-sm font-medium transition-colors flex items-center justify-center gap-2 text-muted hover:text-foreground"
+      >
+        <LogOut size={16} />
+        Se déconnecter
+      </button>
 
       {/* RGPD: Privacy & Account Deletion */}
       <div className="card-static p-5 space-y-4 border-danger/20">

@@ -18,7 +18,7 @@ export default function LegalPage() {
 
           <h2 className="text-lg font-semibold mt-6">1. Responsable du traitement</h2>
           <p className="text-sm leading-relaxed">
-            Eclectuscare est une application personnelle de suivi animalier.
+            ParrotCare est une application personnelle de suivi animalier.
             Le responsable du traitement est l&apos;éditeur de l&apos;application.
             Pour toute question relative à vos données personnelles, contactez-nous à
             l&apos;adresse indiquée dans la section « Contact » ci-dessous.

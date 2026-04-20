@@ -3,6 +3,7 @@ export interface FoodCategory {
   name: string;
   color: string | null;
   icon: string | null;
+  species: string;
 }
 
 export interface Food {
@@ -26,6 +27,7 @@ export interface Food {
   fiber_g: number | null;
   sugar_g: number | null;
   fat_g: number | null;
+  species: string;
   // Joined
   category?: FoodCategory;
 }
@@ -114,7 +116,7 @@ export interface WeightLog {
 
 export interface BioCalendarEvent {
   id: string;
-  event_type: 'mue' | 'hormones' | 'nidification' | 'veterinaire' | 'bien_etre';
+  event_type: 'mue' | 'hormones' | 'nidification' | 'reproduction' | 'veterinaire' | 'bien_etre';
   title: string;
   is_recurring: boolean;
   recurrence_month_start: number | null;
@@ -123,10 +125,13 @@ export interface BioCalendarEvent {
   dietary_advice: string | null;
   color: string | null;
   icon: string | null;
+  species: string;
 }
 
 export interface UserSettings {
   id: string;
+  user_id?: string;
+  species: 'eclectus' | 'african_grey' | 'galah';
   bird_name: string;
   bird_birth_date: string | null;
   weight_min_grams: number;

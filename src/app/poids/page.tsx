@@ -27,18 +27,20 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
+import { getSpeciesConfig } from '@/lib/species';
 import { getWeightStatus, cn } from '@/lib/utils';
 import type { WeightLog, UserSettings } from '@/types/database';
 
 type Period = '1M' | '3M' | '6M' | '1A' | 'all';
 
 export default function PoidsPage() {
-  const { user } = useAuth();
+  const { user, species } = useAuth();
+  const speciesConfig = getSpeciesConfig(species);
   const [logs, setLogs] = useState<WeightLog[]>([]);
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [period, setPeriod] = useState<Period>('3M');
   const [formDate, setFormDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [formWeight, setFormWeight] = useState(430);
+  const [formWeight, setFormWeight] = useState(Math.round((speciesConfig.weight.defaultMin + speciesConfig.weight.defaultMax) / 2));
   const [formNotes, setFormNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -85,8 +87,8 @@ export default function PoidsPage() {
 
   const latest = logs[0];
   const previous = logs[1];
-  const minWeight = settings?.weight_min_grams ?? 380;
-  const maxWeight = settings?.weight_max_grams ?? 550;
+  const minWeight = settings?.weight_min_grams ?? speciesConfig.weight.defaultMin;
+  const maxWeight = settings?.weight_max_grams ?? speciesConfig.weight.defaultMax;
 
   const variation = latest && previous
     ? Number(latest.weight_grams) - Number(previous.weight_grams)
