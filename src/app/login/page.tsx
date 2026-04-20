@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 function translateAuthError(msg: string): string {
   const map: Record<string, string> = {
     'Invalid login credentials': 'Email ou mot de passe incorrect.',
-    'Email not confirmed': 'Veuillez confirmer votre email avant de vous connecter.',
+    'Email not confirmed': 'Compte non confirmé. Veuillez réessayer.',
     'User already registered': 'Un compte existe déjà avec cet email.',
     'Signup requires a valid password': 'Le mot de passe doit contenir au moins 6 caractères.',
     'Email address is invalid': 'Adresse email invalide.',
@@ -61,6 +61,9 @@ function LoginContent() {
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
+        queryParams: {
+          prompt: 'select_account',
+        },
       },
     });
 
@@ -83,35 +86,32 @@ function LoginContent() {
         setLoading(false);
         return;
       }
-      const { error } = await supabase.auth.signUp({
+      const { data: signUpData, error } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
       });
 
       if (error) {
         setError(translateAuthError(error.message));
-      } else {
-        // Try auto-login after signup (works if email confirmation is disabled in Supabase)
+      } else if (signUpData.user) {
+        // Create user settings immediately
+        await supabase.from('user_settings').insert({
+          user_id: signUpData.user.id,
+          bird_name: 'Mon oiseau',
+        }).select().single();
+
+        // Auto-login after signup
         const { error: loginError } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (!loginError) {
-          // New user: create settings and go to onboarding
-          const { data: { user: newUser } } = await supabase.auth.getUser();
-          if (newUser) {
-            await supabase.from('user_settings').insert({
-              user_id: newUser.id,
-              bird_name: 'Mon oiseau',
-            }).select().single();
-          }
           router.push('/onboarding');
           router.refresh();
         } else {
-          setSuccess('Compte créé ! Un email de confirmation a été envoyé. Vérifiez votre boîte de réception.');
+          // Fallback: session may already be active from signUp
+          router.push('/onboarding');
+          router.refresh();
         }
       }
     } else {
