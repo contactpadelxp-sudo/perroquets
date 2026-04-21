@@ -31,33 +31,65 @@ export default function OnboardingPage() {
   };
 
   const handleContinue = async () => {
-    if (!user || !selected) return;
+    if (!selected) return;
     setSaving(true);
 
-    const speciesDefaults: Record<string, { weight_min: number; weight_max: number; name: string }> = {
-      eclectus: { weight_min: 380, weight_max: 550, name: 'Mon Éclectus' },
-      african_grey: { weight_min: 400, weight_max: 650, name: 'Mon Gris' },
-      galah: { weight_min: 272, weight_max: 432, name: 'Mon Rosalbin' },
-    };
+    try {
+      // Get user from auth context or directly from Supabase session
+      let userId = user?.id;
+      if (!userId) {
+        const { data: { user: sessionUser } } = await supabase.auth.getUser();
+        userId = sessionUser?.id;
+      }
+      if (!userId) {
+        router.push('/login');
+        return;
+      }
 
-    const defaults = speciesDefaults[selected];
+      const speciesDefaults: Record<string, { weight_min: number; weight_max: number; name: string }> = {
+        eclectus: { weight_min: 380, weight_max: 550, name: 'Mon Éclectus' },
+        african_grey: { weight_min: 400, weight_max: 650, name: 'Mon Gris' },
+        galah: { weight_min: 272, weight_max: 432, name: 'Mon Rosalbin' },
+      };
 
-    const { error } = await supabase
-      .from('user_settings')
-      .upsert({
-        user_id: user.id,
-        species: selected,
-        bird_name: birdName || defaults.name,
-        weight_min_grams: defaults.weight_min,
-        weight_max_grams: defaults.weight_max,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id' });
+      const defaults = speciesDefaults[selected];
 
-    if (!error) {
-      router.push('/');
-      router.refresh();
+      // Try update first (row may already exist from signup)
+      const { data: existing } = await supabase
+        .from('user_settings')
+        .select('id')
+        .eq('user_id', userId)
+        .limit(1)
+        .single();
+
+      if (existing) {
+        await supabase
+          .from('user_settings')
+          .update({
+            species: selected,
+            bird_name: birdName || defaults.name,
+            weight_min_grams: defaults.weight_min,
+            weight_max_grams: defaults.weight_max,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('user_id', userId);
+      } else {
+        await supabase
+          .from('user_settings')
+          .insert({
+            user_id: userId,
+            species: selected,
+            bird_name: birdName || defaults.name,
+            weight_min_grams: defaults.weight_min,
+            weight_max_grams: defaults.weight_max,
+          });
+      }
+
+      // Force full page reload to refresh auth context with new settings
+      window.location.href = '/';
+    } catch {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   return (
