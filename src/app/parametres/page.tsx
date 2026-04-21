@@ -446,16 +446,11 @@ export default function ParametresPage() {
                   if (!user) return;
                   setDeleting(true);
                   try {
-                    // Delete all user data in order
-                    await supabase.from('meal_items').delete().eq('user_id', user.id);
-                    await supabase.from('daily_meals').delete().eq('user_id', user.id);
-                    await supabase.from('daily_nutrition_summary').delete().eq('user_id', user.id);
-                    await supabase.from('weight_logs').delete().eq('user_id', user.id);
-                    await supabase.from('user_settings').delete().eq('user_id', user.id);
-
-                    // Sign out (Supabase Auth user deletion needs admin key,
-                    // but we clear all data and sign out)
-                    await supabase.auth.signOut();
+                    const res = await fetch('/api/delete-account', { method: 'POST' });
+                    if (!res.ok) {
+                      const data = await res.json();
+                      throw new Error(data.error || 'Erreur');
+                    }
                     window.location.href = '/login';
                   } catch {
                     toast.error('Erreur lors de la suppression');
