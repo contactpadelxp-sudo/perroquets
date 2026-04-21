@@ -447,13 +447,14 @@ export default function ParametresPage() {
                   setDeleting(true);
                   try {
                     const res = await fetch('/api/delete-account', { method: 'POST' });
+                    const data = await res.json();
                     if (!res.ok) {
-                      const data = await res.json();
-                      throw new Error(data.error || 'Erreur');
+                      throw new Error(data.error || 'Erreur serveur');
                     }
+                    // Success — redirect to login
                     window.location.href = '/login';
-                  } catch {
-                    toast.error('Erreur lors de la suppression');
+                  } catch (err: any) {
+                    toast.error(err.message || 'Erreur lors de la suppression');
                     setDeleting(false);
                   }
                 }}

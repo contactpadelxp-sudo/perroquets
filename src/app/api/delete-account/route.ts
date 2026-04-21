@@ -6,20 +6,33 @@ export async function POST() {
   try {
     // 1. Get the authenticated user from the request session
     const supabase = await createSupabaseServer();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-    if (!user) {
-      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'Non authentifié', detail: authError?.message },
+        { status: 401 }
+      );
     }
 
     const userId = user.id;
+    const errors: string[] = [];
 
-    // 2. Delete all user data (with the user's own session)
-    await supabase.from('meal_items').delete().eq('user_id', userId);
-    await supabase.from('daily_meals').delete().eq('user_id', userId);
-    await supabase.from('daily_nutrition_summary').delete().eq('user_id', userId);
-    await supabase.from('weight_logs').delete().eq('user_id', userId);
-    await supabase.from('user_settings').delete().eq('user_id', userId);
+    // 2. Delete all user data — continue even if some tables fail
+    const tables = [
+      'meal_items',
+      'daily_meals',
+      'daily_nutrition_summary',
+      'weight_logs',
+      'user_settings',
+    ];
+
+    for (const table of tables) {
+      const { error } = await supabase.from(table).delete().eq('user_id', userId);
+      if (error) {
+        errors.push(`${table}: ${error.message}`);
+      }
+    }
 
     // 3. Delete the auth user via admin API (requires service role key)
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -29,14 +42,27 @@ export async function POST() {
         serviceRoleKey,
         { auth: { autoRefreshToken: false, persistSession: false } }
       );
-      await adminClient.auth.admin.deleteUser(userId);
+      const { error: deleteAuthError } = await adminClient.auth.admin.deleteUser(userId);
+      if (deleteAuthError) {
+        errors.push(`auth: ${deleteAuthError.message}`);
+      }
+    } else {
+      errors.push('auth: SUPABASE_SERVICE_ROLE_KEY manquante — compte auth non supprimé');
     }
 
     // 4. Sign out the current session
     await supabase.auth.signOut();
 
-    return NextResponse.json({ success: true });
+    if (errors.length > 0) {
+      console.error('[delete-account] Partial errors:', errors);
+    }
+
+    return NextResponse.json({ success: true, warnings: errors.length > 0 ? errors : undefined });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Erreur serveur' }, { status: 500 });
+    console.error('[delete-account] Fatal error:', err);
+    return NextResponse.json(
+      { error: err.message || 'Erreur serveur' },
+      { status: 500 }
+    );
   }
 }
